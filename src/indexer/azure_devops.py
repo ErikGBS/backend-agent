@@ -1,4 +1,5 @@
 import base64
+from urllib.parse import quote
 
 import httpx
 
@@ -15,7 +16,7 @@ class AzureDevOpsClient:
         self._base = f"https://dev.azure.com/{settings.azure_devops_org}"
 
     async def list_repos(self, project: str) -> list[dict]:
-        url = f"{self._base}/{project}/_apis/git/repositories?api-version=7.1"
+        url = f"{self._base}/{quote(project)}/_apis/git/repositories?api-version=7.1"
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url, headers=self._headers)
             resp.raise_for_status()
@@ -23,7 +24,7 @@ class AzureDevOpsClient:
 
     async def get_full_tree(self, project: str, repo_id: str) -> list[dict]:
         url = (
-            f"{self._base}/{project}/_apis/git/repositories/{repo_id}/items"
+            f"{self._base}/{quote(project)}/_apis/git/repositories/{repo_id}/items"
             f"?recursionLevel=Full&api-version=7.1"
         )
         async with httpx.AsyncClient(timeout=60) as client:
@@ -33,8 +34,8 @@ class AzureDevOpsClient:
 
     async def get_file_content(self, project: str, repo_id: str, path: str) -> str:
         url = (
-            f"{self._base}/{project}/_apis/git/repositories/{repo_id}/items"
-            f"?path={path}&api-version=7.1"
+            f"{self._base}/{quote(project)}/_apis/git/repositories/{repo_id}/items"
+            f"?path={quote(path)}&api-version=7.1"
         )
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url, headers=self._headers)
