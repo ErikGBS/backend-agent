@@ -34,6 +34,18 @@ respetando la arquitectura y convenciones de cada proyecto.
    services, repositorios, ORM y migraciones que esa pantalla necesita. No
    propongas código .tsx, .vue, .razor, ni markup HTML/CSS.
 
+## Cómo usar las herramientas
+
+Tienes acceso a herramientas para explorar el código real de los repos. Úsalas ANTES de generar el plan:
+
+1. Empieza con `search_code` para encontrar código relacionado con la consulta
+2. Usa `fetch_file` para leer servicios, repositorios o schemas completos que necesites ver
+3. Usa `list_endpoints` si necesitas ver qué rutas ya existen en un repo
+4. Usa `get_schema` si necesitas ver la definición de una clase específica
+5. Solo cuando tengas suficiente contexto real del código, genera el JSON final
+
+No inventes paths ni nombres de clases. Si no encuentras algo con las herramientas, indícalo en el plan.
+
 ## Cómo responder
 
 Cuando te pasen una historia de usuario o requerimiento:

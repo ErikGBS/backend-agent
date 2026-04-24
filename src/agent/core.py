@@ -3,17 +3,16 @@ import re
 
 import anthropic
 
-from src.agent.prompt import SYSTEM_PROMPT, build_user_message
+from src.agent.prompt import SYSTEM_PROMPT
+from src.agent.tools import TOOLS, execute_tool
 from src.core.config import settings
 from src.models.index import GlobalIndex
 from src.models.query import AgentPlan, AgentQuery, AgentResponse
-from src.retrieval.file_fetcher import fetch_relevant_files
-from src.retrieval.index_store import build_context_summary, search_repos
-from src.retrieval.vector_store import search as vector_search
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+_MAX_ITERATIONS = 8
 
 
 def _extract_plan(raw: str) -> AgentPlan | None:
@@ -25,22 +24,8 @@ def _extract_plan(raw: str) -> AgentPlan | None:
         return None
 
 
-async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
-    hits = vector_search(query.query, top_k=8, project=query.project)
-
-    if hits:
-        repo_names = list({h["repo"] for h in hits})
-        relevant_repos = [index.repos[r] for r in repo_names if r in index.repos]
-        fetched_files = {f"{h['repo']}:{h['file_path']}": h.get("text", "") for h in hits}
-    else:
-        relevant_repos = search_repos(index, query.query, project=query.project)
-        fetched_files = await fetch_relevant_files(relevant_repos, query.query)
-
-    context = build_context_summary(relevant_repos)
-    user_text = build_user_message(query.query, context, fetched_files)
-
+def _build_initial_content(query: AgentQuery) -> list[dict]:
     content: list[dict] = []
-
     if query.image_base64:
         content.append({
             "type": "image",
@@ -50,30 +35,68 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
                 "data": query.image_base64,
             },
         })
+    content.append({"type": "text", "text": f"## Consulta\n{query.query}"})
+    return content
 
-    content.append({"type": "text", "text": user_text})
 
-    async with _client.messages.stream(
-        model=settings.claude_model,
-        max_tokens=32000,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": content}],
-    ) as stream:
-        message = await stream.get_final_message()
+async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
+    messages: list[dict] = [{"role": "user", "content": _build_initial_content(query)}]
+    repos_used: set[str] = set()
+    files_used: list[str] = []
+    response = None
 
-    raw = message.content[0].text
-    plan = _extract_plan(raw)
-    answer_md = plan.markdown if plan else raw
+    for _ in range(_MAX_ITERATIONS):
+        response = await _client.messages.create(
+            model=settings.claude_model,
+            max_tokens=32000,
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=TOOLS,
+            messages=messages,
+        )
 
+        if response.stop_reason == "end_turn":
+            raw = next((b.text for b in response.content if b.type == "text"), "")
+            plan = _extract_plan(raw)
+            return AgentResponse(
+                answer=plan.markdown if plan else raw,
+                plan=plan,
+                repos_consulted=list(repos_used),
+                files_fetched=files_used,
+            )
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+
+            for block in response.content:
+                if block.type == "tool_use":
+                    result = await execute_tool(block.name, block.input, index)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result,
+                    })
+                    if "repo" in block.input:
+                        repos_used.add(block.input["repo"])
+                    if block.name == "fetch_file":
+                        files_used.append(f"{block.input.get('repo')}:{block.input.get('path')}")
+
+            messages.append({"role": "user", "content": tool_results})
+
+    # agotadas las iteraciones — devolver lo último disponible
+    last_text = ""
+    if response:
+        last_text = next((b.text for b in response.content if hasattr(b, "text")), "")
+    plan = _extract_plan(last_text)
     return AgentResponse(
-        answer=answer_md,
+        answer=plan.markdown if plan else last_text,
         plan=plan,
-        repos_consulted=[r.name for r in relevant_repos],
-        files_fetched=list(fetched_files.keys()),
+        repos_consulted=list(repos_used),
+        files_fetched=files_used,
     )
