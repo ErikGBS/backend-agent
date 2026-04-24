@@ -9,6 +9,7 @@ class EndpointInfo(BaseModel):
 
 class RepoIndex(BaseModel):
     name: str
+    repo_id: str
     project: str
     repo_type: str  # "python" | "dotnet"
     tree: list[str]

@@ -65,6 +65,7 @@ async def crawl_dotnet_repo(
 
     return RepoIndex(
         name=repo_name,
+        repo_id=repo_id,
         project=project,
         repo_type="dotnet",
         tree=all_paths,

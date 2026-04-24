@@ -1,9 +1,8 @@
 from src.indexer.azure_devops import AzureDevOpsClient
-from src.models.index import GlobalIndex, RepoIndex
+from src.models.index import RepoIndex
 
 
 async def fetch_relevant_files(
-    index: GlobalIndex,
     repos: list[RepoIndex],
     query: str,
     max_files: int = 5,
@@ -29,7 +28,7 @@ async def fetch_relevant_files(
                 path_lower = path.lower()
                 if any(t in path_lower for t in tokens) and path not in repo.key_files:
                     try:
-                        content = await client.get_file_content(repo.project, _repo_id(index, repo), path)
+                        content = await client.get_file_content(repo.project, repo.repo_id, path)
                         fetched[f"{repo.name}:{path}"] = content[:3000]
                     except Exception:
                         pass
@@ -37,9 +36,3 @@ async def fetch_relevant_files(
                         return fetched
 
     return fetched
-
-
-def _repo_id(index: GlobalIndex, repo: RepoIndex) -> str:
-    # el id real del repo no se guarda en el índice actual; usar el nombre como fallback
-    # en una mejora futura guardar el repo_id en RepoIndex
-    return repo.name

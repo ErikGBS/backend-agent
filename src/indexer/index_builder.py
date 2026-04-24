@@ -10,18 +10,6 @@ from src.indexer.embedder import index_repo_vectors
 from src.models.index import GlobalIndex, RepoIndex
 from src.retrieval.vector_store import ensure_collection
 
-_PYTHON_KEYWORDS = ("python", "api", "bff", "functions")
-_DOTNET_KEYWORDS = (".net", "dotnet", "csharp", "functions")
-
-
-def _detect_repo_type(repo_name: str, default_project: str) -> str:
-    name_lower = repo_name.lower()
-    if any(k in name_lower for k in ("functions", "api", "bff")):
-        if default_project == "Cantera":
-            return "python"
-    return "python"  # default; se refina con detección de archivos
-
-
 async def _index_repo(client: AzureDevOpsClient, project: str, repo: dict) -> RepoIndex | None:
     try:
         tree = await client.get_full_tree(project, repo["id"])

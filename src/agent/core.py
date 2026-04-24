@@ -34,7 +34,7 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
         fetched_files = {f"{h['repo']}:{h['file_path']}": h.get("text", "") for h in hits}
     else:
         relevant_repos = search_repos(index, query.query, project=query.project)
-        fetched_files = await fetch_relevant_files(index, relevant_repos, query.query)
+        fetched_files = await fetch_relevant_files(relevant_repos, query.query)
 
     context = build_context_summary(relevant_repos)
     user_text = build_user_message(query.query, context, fetched_files)

@@ -63,6 +63,7 @@ async def crawl_python_repo(
 
     return RepoIndex(
         name=repo_name,
+        repo_id=repo_id,
         project=project,
         repo_type="python",
         tree=all_paths,
