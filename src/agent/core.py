@@ -7,19 +7,24 @@ from src.agent.prompt import SYSTEM_PROMPT
 from src.agent.tools import TOOLS, execute_tool
 from src.core.config import settings
 from src.models.index import GlobalIndex
-from src.models.query import AgentPlan, AgentQuery, AgentResponse
+from src.models.query import AgentQuery, AgentResponse, RefinementAnalysis
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
-_MAX_ITERATIONS = 8
+_MAX_TOOL_ROUNDS = 10
+_FORCE_OUTPUT_MSG = (
+    "Ya tienes suficiente contexto del código. "
+    "Genera AHORA el JSON de RefinementAnalysis con toda la información que has recopilado. "
+    "Responde únicamente con el bloque JSON, sin texto adicional."
+)
 
 
-def _extract_plan(raw: str) -> AgentPlan | None:
+def _extract_analysis(raw: str) -> RefinementAnalysis | None:
     text = _JSON_FENCE.sub("", raw).strip()
     try:
         data = json.loads(text)
-        return AgentPlan.model_validate(data)
+        return RefinementAnalysis.model_validate(data)
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -44,11 +49,12 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
     repos_used: set[str] = set()
     files_used: list[str] = []
     response = None
+    tool_round = 0
 
-    for _ in range(_MAX_ITERATIONS):
+    while True:
         response = await _client.messages.create(
             model=settings.claude_model,
-            max_tokens=32000,
+            max_tokens=8192,
             system=[
                 {
                     "type": "text",
@@ -62,10 +68,10 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
 
         if response.stop_reason == "end_turn":
             raw = next((b.text for b in response.content if b.type == "text"), "")
-            plan = _extract_plan(raw)
+            analysis = _extract_analysis(raw)
             return AgentResponse(
-                answer=plan.markdown if plan else raw,
-                plan=plan,
+                answer=analysis.markdown if analysis else raw,
+                analysis=analysis,
                 repos_consulted=list(repos_used),
                 files_fetched=files_used,
             )
@@ -87,16 +93,36 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
                     if block.name == "fetch_file":
                         files_used.append(f"{block.input.get('repo')}:{block.input.get('path')}")
 
-            messages.append({"role": "user", "content": tool_results})
+            tool_round += 1
+            if tool_round >= _MAX_TOOL_ROUNDS:
+                # Force the model to produce the final JSON on the next call
+                messages.append({"role": "user", "content": tool_results})
+                messages.append({"role": "user", "content": [{"type": "text", "text": _FORCE_OUTPUT_MSG}]})
+                # One final call without tools to get the JSON
+                final = await _client.messages.create(
+                    model=settings.claude_model,
+                    max_tokens=8192,
+                    system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+                    messages=messages,
+                )
+                raw = next((b.text for b in final.content if hasattr(b, "text")), "")
+                analysis = _extract_analysis(raw)
+                return AgentResponse(
+                    answer=analysis.markdown if analysis else raw,
+                    analysis=analysis,
+                    repos_consulted=list(repos_used),
+                    files_fetched=files_used,
+                )
 
-    # agotadas las iteraciones — devolver lo último disponible
-    last_text = ""
-    if response:
-        last_text = next((b.text for b in response.content if hasattr(b, "text")), "")
-    plan = _extract_plan(last_text)
-    return AgentResponse(
-        answer=plan.markdown if plan else last_text,
-        plan=plan,
-        repos_consulted=list(repos_used),
-        files_fetched=files_used,
-    )
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        # Unexpected stop reason (e.g. max_tokens) — return what we have
+        raw = next((b.text for b in response.content if hasattr(b, "text")), "")
+        analysis = _extract_analysis(raw)
+        return AgentResponse(
+            answer=analysis.markdown if analysis else raw,
+            analysis=analysis,
+            repos_consulted=list(repos_used),
+            files_fetched=files_used,
+        )

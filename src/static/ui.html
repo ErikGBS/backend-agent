@@ -4,15 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Backend Agent</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/sql.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/xml.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/csharp.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -28,12 +20,15 @@
       --accent: #14b8a6;
       --accent-dim: #0d9488;
       --accent-glow: rgba(20,184,166,0.15);
-      --badge-new-bg: rgba(34,197,94,0.15);
-      --badge-new-text: #4ade80;
-      --badge-new-border: rgba(34,197,94,0.3);
       --badge-mod-bg: rgba(251,146,60,0.15);
       --badge-mod-text: #fb923c;
       --badge-mod-border: rgba(251,146,60,0.3);
+      --badge-new-bg: rgba(34,197,94,0.15);
+      --badge-new-text: #4ade80;
+      --badge-new-border: rgba(34,197,94,0.3);
+      --badge-inv-bg: rgba(99,102,241,0.15);
+      --badge-inv-text: #a5b4fc;
+      --badge-inv-border: rgba(99,102,241,0.3);
       --error-bg: rgba(239,68,68,0.1);
       --error-border: rgba(239,68,68,0.4);
       --error-text: #f87171;
@@ -66,11 +61,7 @@
       gap: 12px;
       flex-shrink: 0;
     }
-    header .logo {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    header .logo { display: flex; align-items: center; gap: 8px; }
     header .logo svg { color: var(--accent); }
     header h1 { font-size: 14px; font-weight: 600; color: var(--text); }
     header .badge {
@@ -83,11 +74,7 @@
       font-weight: 500;
     }
     header .spacer { flex: 1; }
-    header a {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-decoration: none;
-    }
+    header a { font-size: 12px; color: var(--text-muted); text-decoration: none; }
     header a:hover { color: var(--accent); }
 
     /* ── LAYOUT ── */
@@ -353,70 +340,52 @@
     .fallback-banner.visible { display: block; }
 
     /* ══════════════════════════════
-       TAB: STEPS
+       TAB: COMPONENTES
     ══════════════════════════════ */
-    #tab-steps {
-      flex-direction: row;
-      overflow: hidden;
+    #tab-components {
+      padding: 20px;
+      gap: 20px;
     }
 
-    .steps-list {
-      width: 280px;
-      min-width: 280px;
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 12px 0;
+    .comp-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
     }
-    .step-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 10px 14px;
-      cursor: pointer;
-      border-left: 3px solid transparent;
-      transition: background 0.1s, border-color 0.1s;
-    }
-    .step-item:hover { background: var(--surface2); }
-    .step-item.active {
-      background: var(--surface2);
-      border-left-color: var(--accent);
-    }
-    .step-num {
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      border-radius: 50%;
+
+    .repo-cards { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+    .repo-card {
       background: var(--surface2);
       border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .repo-card-header {
       display: flex;
       align-items: center;
-      justify-content: center;
-      font-size: 11px;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .repo-card-name {
+      font-size: 13px;
       font-weight: 700;
-      color: var(--text-muted);
-      transition: background 0.1s, color 0.1s;
-    }
-    .step-item.active .step-num {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #000;
-    }
-    .step-info { flex: 1; min-width: 0; }
-    .step-title {
-      font-size: 12px;
-      font-weight: 600;
       color: var(--text);
-      line-height: 1.4;
-      word-break: break-word;
+      font-family: var(--font-mono);
     }
-    .step-path {
+    .repo-card-project {
       font-size: 10px;
       color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-top: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-weight: 500;
+    }
+    .repo-card-reason {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.4;
     }
     .badge {
       font-size: 9px;
@@ -426,96 +395,26 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
       white-space: nowrap;
-      margin-top: 2px;
     }
-    .badge-new {
-      background: var(--badge-new-bg);
-      color: var(--badge-new-text);
-      border: 1px solid var(--badge-new-border);
-    }
-    .badge-mod {
-      background: var(--badge-mod-bg);
-      color: var(--badge-mod-text);
-      border: 1px solid var(--badge-mod-border);
-    }
+    .badge-mod  { background: var(--badge-mod-bg);  color: var(--badge-mod-text);  border: 1px solid var(--badge-mod-border); }
+    .badge-new  { background: var(--badge-new-bg);  color: var(--badge-new-text);  border: 1px solid var(--badge-new-border); }
+    .badge-inv  { background: var(--badge-inv-bg);  color: var(--badge-inv-text);  border: 1px solid var(--badge-inv-border); }
 
-    .steps-detail {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      overflow: hidden;
-    }
-    .steps-detail-header {
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-    }
-    .steps-detail-path {
-      flex: 1;
+    .comp-list { display: flex; flex-direction: column; gap: 4px; }
+    .comp-list-item {
+      padding: 6px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
       font-size: 12px;
       font-family: var(--font-mono);
       color: var(--text-dim);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    .btn-copy-code {
-      padding: 4px 10px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: 6px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.15s;
-    }
-    .btn-copy-code:hover { color: var(--accent); border-color: var(--accent); }
-    .steps-detail-desc {
-      padding: 8px 16px 0;
+    .comp-empty {
       font-size: 12px;
       color: var(--text-muted);
-      flex-shrink: 0;
+      font-style: italic;
     }
-    .steps-code-wrap {
-      flex: 1;
-      overflow: auto;
-      padding: 0;
-    }
-    .steps-code-wrap pre {
-      margin: 0;
-      padding: 16px;
-      font-size: 12px;
-      line-height: 1.6;
-      min-height: 100%;
-    }
-    .steps-detail-footer {
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-    }
-    .steps-detail-footer span { font-size: 11px; color: var(--text-muted); }
-    .nav-btn {
-      padding: 5px 12px;
-      font-size: 12px;
-      color: var(--text-muted);
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .nav-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
-    .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .nav-btns { display: flex; gap: 6px; }
 
     /* ══════════════════════════════
        TAB: FLOW
@@ -550,7 +449,6 @@
       color: rgba(255,255,255,0.7);
       margin-top: 2px;
     }
-    /* kind colors for left border */
     .flow-node[data-kind="endpoint"]  { border-left-color: #3b82f6; }
     .flow-node[data-kind="schema"]    { border-left-color: #06b6d4; }
     .flow-node[data-kind="service"]   { border-left-color: #14b8a6; }
@@ -566,89 +464,51 @@
     }
 
     /* ══════════════════════════════
-       TAB: CHECKLIST
+       TAB: SEÑALES & PREGUNTAS
     ══════════════════════════════ */
-    #tab-checklist {
+    #tab-signals {
       padding: 20px;
-      gap: 20px;
+      gap: 24px;
     }
 
-    .progress-bar-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
-    }
-    .progress-bar-track {
-      flex: 1;
-      height: 6px;
-      background: var(--surface2);
-      border-radius: 3px;
-      overflow: hidden;
-      border: 1px solid var(--border2);
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
-    }
-    .progress-text {
+    .signals-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .signal-chip {
       font-size: 12px;
       font-weight: 600;
-      color: var(--text-muted);
-      white-space: nowrap;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(20,184,166,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(20,184,166,0.3);
     }
 
-    .checklist-groups { display: flex; flex-direction: column; gap: 20px; }
-    .checklist-group {}
-    .checklist-category {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--accent);
-      margin-bottom: 10px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid var(--border);
-    }
-    .checklist-items { display: flex; flex-direction: column; gap: 6px; }
-    .checklist-item {
+    .questions-list { display: flex; flex-direction: column; gap: 8px; }
+    .question-item {
       display: flex;
-      align-items: flex-start;
       gap: 10px;
-      padding: 8px 12px;
+      padding: 10px 12px;
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 6px;
-      cursor: pointer;
-      transition: border-color 0.15s;
+      align-items: flex-start;
     }
-    .checklist-item:hover { border-color: var(--border2); }
-    .checklist-item input[type="checkbox"] {
-      width: 15px;
-      height: 15px;
-      min-width: 15px;
-      accent-color: var(--accent);
-      margin-top: 1px;
-      cursor: pointer;
+    .question-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 18px;
+      padding-top: 1px;
     }
-    .checklist-item label {
+    .question-text {
       font-size: 13px;
       color: var(--text);
-      cursor: pointer;
       line-height: 1.4;
-    }
-    .checklist-item.checked label {
-      text-decoration: line-through;
-      color: var(--text-muted);
     }
 
     /* ══════════════════════════════
-       TAB: PLAN
+       TAB: BRIEFING
     ══════════════════════════════ */
-    #tab-plan {
+    #tab-brief {
       padding: 20px;
       gap: 16px;
     }
@@ -755,12 +615,7 @@
       overflow-x: auto;
       margin-bottom: 12px;
     }
-    .md pre code {
-      background: none;
-      padding: 0;
-      border-radius: 0;
-      color: inherit;
-    }
+    .md pre code { background: none; padding: 0; border-radius: 0; color: inherit; }
     .md strong { font-weight: 700; }
     .md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
     .md blockquote {
@@ -769,9 +624,6 @@
       margin: 0 0 12px;
       color: var(--text-dim);
     }
-
-    /* hljs inside steps */
-    .hljs { background: transparent !important; }
   </style>
 </head>
 <body>
@@ -784,7 +636,7 @@
       </svg>
       <h1>Backend Agent</h1>
     </div>
-    <span class="badge">artifact</span>
+    <span class="badge">refinamiento</span>
     <div class="spacer"></div>
     <a href="/docs" target="_blank">API Docs</a>
     <a href="/health" target="_blank">Health</a>
@@ -807,8 +659,8 @@
         </select>
       </div>
       <div class="field">
-        <label>Consulta</label>
-        <textarea id="query" placeholder="Describe la historia de usuario o requerimiento técnico…"></textarea>
+        <label>Historia de usuario</label>
+        <textarea id="query" placeholder="Pega aquí la historia de usuario del sprint…"></textarea>
       </div>
       <div class="field">
         <label>Imagen (opcional)</label>
@@ -818,14 +670,14 @@
         <img id="imagePreview" alt="preview">
       </div>
       <div class="btn-row">
-        <button type="submit" id="submitBtn">Enviar</button>
+        <button type="submit" id="submitBtn">Analizar</button>
         <button type="button" id="clearBtn">Limpiar</button>
         <span id="elapsed"></span>
       </div>
       <div id="metaChips" class="meta-chips" style="display:none">
-        <div class="chips-label">Repos</div>
+        <div class="chips-label">Repos consultados</div>
         <div id="repoChips" class="chips"></div>
-        <div class="chips-label" style="margin-top:6px">Archivos</div>
+        <div class="chips-label" style="margin-top:6px">Archivos leídos</div>
         <div id="fileChips" class="chips"></div>
       </div>
     </aside>
@@ -836,23 +688,23 @@
       <div class="loading-bar" id="loadingBar"></div>
       <div class="error-banner" id="errorBanner"></div>
       <div class="fallback-banner" id="fallbackBanner">
-        No se pudo parsear el plan estructurado. Mostrando respuesta cruda.
+        No se pudo parsear el análisis estructurado. Mostrando respuesta cruda.
       </div>
 
-      <!-- PLAN TITLE -->
+      <!-- TITLE -->
       <div class="plan-header" id="planHeader" style="display:none">
         <div class="plan-header-inner">
-          <span class="plan-label">Implementation Plan</span>
+          <span class="plan-label">Briefing de refinamiento</span>
           <span id="planTitle"></span>
         </div>
       </div>
 
       <!-- TABS BAR -->
       <div class="tabs-bar" id="tabsBar" style="display:none">
-        <button class="tab-btn active" data-tab="steps">Steps</button>
+        <button class="tab-btn active" data-tab="components">Componentes</button>
         <button class="tab-btn" data-tab="flow">Flow</button>
-        <button class="tab-btn" data-tab="checklist">Checklist</button>
-        <button class="tab-btn" data-tab="plan">Plan</button>
+        <button class="tab-btn" data-tab="signals">Señales &amp; Preguntas</button>
+        <button class="tab-btn" data-tab="brief">Briefing</button>
       </div>
 
       <!-- TAB CONTENT -->
@@ -865,30 +717,13 @@
               <rect x="3" y="3" width="18" height="18" rx="2"/>
               <path d="M3 9h18M9 21V9"/>
             </svg>
-            <p>Envía una consulta para ver el plan de implementación</p>
+            <p>Envía una historia de usuario para recibir el briefing de refinamiento</p>
           </div>
         </div>
 
-        <!-- TAB: STEPS -->
-        <div class="tab-pane" id="tab-steps">
-          <div class="steps-list" id="stepsList"></div>
-          <div class="steps-detail">
-            <div class="steps-detail-header">
-              <span class="steps-detail-path" id="stepPath"></span>
-              <button class="btn-copy-code" id="copyCodeBtn">Copiar</button>
-            </div>
-            <div class="steps-detail-desc" id="stepDesc"></div>
-            <div class="steps-code-wrap">
-              <pre><code id="stepCode" class="hljs"></code></pre>
-            </div>
-            <div class="steps-detail-footer">
-              <div class="nav-btns">
-                <button class="nav-btn" id="prevBtn">◀ Previous</button>
-                <button class="nav-btn" id="nextBtn">Next ▶</button>
-              </div>
-              <span id="stepCounter"></span>
-            </div>
-          </div>
+        <!-- TAB: COMPONENTES -->
+        <div class="tab-pane" id="tab-components">
+          <div id="componentsContent" style="padding:20px;display:flex;flex-direction:column;gap:24px;"></div>
         </div>
 
         <!-- TAB: FLOW -->
@@ -896,19 +731,13 @@
           <div class="flow-container" id="flowContainer"></div>
         </div>
 
-        <!-- TAB: CHECKLIST -->
-        <div class="tab-pane" id="tab-checklist">
-          <div class="progress-bar-wrap">
-            <div class="progress-bar-track">
-              <div class="progress-bar-fill" id="progressFill"></div>
-            </div>
-            <span class="progress-text" id="progressText">0/0 — 0%</span>
-          </div>
-          <div class="checklist-groups" id="checklistGroups"></div>
+        <!-- TAB: SEÑALES & PREGUNTAS -->
+        <div class="tab-pane" id="tab-signals">
+          <div id="signalsContent" style="padding:20px;display:flex;flex-direction:column;gap:24px;"></div>
         </div>
 
-        <!-- TAB: PLAN -->
-        <div class="tab-pane" id="tab-plan">
+        <!-- TAB: BRIEFING -->
+        <div class="tab-pane" id="tab-brief">
           <div class="plan-copy-bar">
             <span>Markdown</span>
             <button class="btn-copy-md" id="copyMdBtn">Copiar</button>
@@ -925,31 +754,30 @@
   <script>
   (function () {
     /* ─── state ─── */
-    let plan = null;
-    let activeStep = 0;
+    let analysis = null;
     let elapsedTimer = null;
 
     /* ─── refs ─── */
     const $ = id => document.getElementById(id);
-    const apiKeyEl      = $('apiKey');
-    const projectEl     = $('project');
-    const queryEl       = $('query');
-    const imageFileEl   = $('imageFile');
-    const imagePrevEl   = $('imagePreview');
-    const submitBtn     = $('submitBtn');
-    const clearBtn      = $('clearBtn');
-    const elapsedEl     = $('elapsed');
-    const loadingBar    = $('loadingBar');
-    const errorBanner   = $('errorBanner');
+    const apiKeyEl       = $('apiKey');
+    const projectEl      = $('project');
+    const queryEl        = $('query');
+    const imageFileEl    = $('imageFile');
+    const imagePrevEl    = $('imagePreview');
+    const submitBtn      = $('submitBtn');
+    const clearBtn       = $('clearBtn');
+    const elapsedEl      = $('elapsed');
+    const loadingBar     = $('loadingBar');
+    const errorBanner    = $('errorBanner');
     const fallbackBanner = $('fallbackBanner');
-    const planHeader    = $('planHeader');
-    const planTitle     = $('planTitle');
-    const tabsBar       = $('tabsBar');
-    const tabPanes      = document.querySelectorAll('.tab-pane');
-    const tabBtns       = document.querySelectorAll('.tab-btn');
-    const metaChips     = $('metaChips');
-    const repoChips     = $('repoChips');
-    const fileChips     = $('fileChips');
+    const planHeader     = $('planHeader');
+    const planTitle      = $('planTitle');
+    const tabsBar        = $('tabsBar');
+    const tabPanes       = document.querySelectorAll('.tab-pane');
+    const tabBtns        = document.querySelectorAll('.tab-btn');
+    const metaChips      = $('metaChips');
+    const repoChips      = $('repoChips');
+    const fileChips      = $('fileChips');
 
     /* ─── persist API key ─── */
     const savedKey = localStorage.getItem('ba_apikey');
@@ -980,7 +808,6 @@
         p.classList.toggle('active', active);
         p.style.display = active ? 'flex' : 'none';
       });
-      // hide placeholder-as-active when real tabs showing
       if (name !== 'placeholder') {
         $('tab-placeholder').style.display = 'none';
       }
@@ -990,7 +817,7 @@
     /* ─── clear ─── */
     clearBtn.addEventListener('click', reset);
     function reset() {
-      plan = null;
+      analysis = null;
       tabsBar.style.display = 'none';
       planHeader.style.display = 'none';
       errorBanner.classList.remove('visible');
@@ -1016,13 +843,12 @@
       const key = apiKeyEl.value.trim();
       const q   = queryEl.value.trim();
       if (!key) { showError('Ingresa una X-API-Key.'); return; }
-      if (!q)   { showError('Escribe una consulta.'); return; }
+      if (!q)   { showError('Escribe la historia de usuario.'); return; }
 
       reset();
       loadingBar.classList.add('active');
       submitBtn.disabled = true;
 
-      // elapsed timer
       const t0 = Date.now();
       elapsedEl.textContent = '0s';
       elapsedTimer = setInterval(() => {
@@ -1052,9 +878,8 @@
 
     /* ─── render ─── */
     function renderResponse(data) {
-      plan = data.plan || null;
+      analysis = data.analysis || null;
 
-      // chips
       if (data.repos_consulted?.length || data.files_fetched?.length) {
         metaChips.style.display = 'flex';
         metaChips.style.flexDirection = 'column';
@@ -1064,96 +889,107 @@
           `<span class="chip chip-file">${esc(f)}</span>`).join('');
       }
 
-      if (!plan) {
-        // fallback: show only PLAN tab with raw answer
+      if (!analysis) {
         fallbackBanner.classList.add('visible');
-        renderPlanTab(data.answer);
+        renderBriefTab(data.answer);
         planHeader.style.display = 'none';
         tabsBar.style.display = 'flex';
-        // hide STEPS/FLOW/CHECKLIST tabs
         tabBtns.forEach(b => {
-          if (b.dataset.tab !== 'plan') b.style.display = 'none';
+          if (b.dataset.tab !== 'brief') b.style.display = 'none';
         });
-        showTab('plan');
+        showTab('brief');
         return;
       }
 
       tabBtns.forEach(b => b.style.display = '');
 
-      // header
-      planTitle.textContent = plan.title;
+      planTitle.textContent = analysis.title;
       planHeader.style.display = 'block';
       tabsBar.style.display = 'flex';
 
-      renderSteps();
+      renderComponents();
       renderFlow();
-      renderChecklist();
-      renderPlanTab(plan.markdown);
+      renderSignals();
+      renderBriefTab(analysis.markdown);
 
-      showTab('steps');
+      showTab('components');
     }
 
-    /* ── STEPS ── */
-    function renderSteps() {
-      const list = $('stepsList');
-      list.innerHTML = '';
-      (plan.steps || []).forEach((s, i) => {
-        const div = document.createElement('div');
-        div.className = 'step-item' + (i === 0 ? ' active' : '');
-        div.dataset.index = i;
-        div.innerHTML = `
-          <div class="step-num">${s.number}</div>
-          <div class="step-info">
-            <div class="step-title">${esc(s.title)}</div>
-            <div class="step-path">${esc(s.path)}</div>
-            <div style="margin-top:4px">
-              <span class="badge ${s.mode === 'NUEVO' ? 'badge-new' : 'badge-mod'}">${esc(s.mode)}</span>
-            </div>
-          </div>`;
-        div.addEventListener('click', () => setStep(i));
-        list.appendChild(div);
+    /* ── COMPONENTES ── */
+    function renderComponents() {
+      const container = $('componentsContent');
+      container.innerHTML = '';
+
+      // Repos impacted
+      const reposSection = section('Repositorios involucrados');
+      const cards = document.createElement('div');
+      cards.className = 'repo-cards';
+      (analysis.repos_impacted || []).forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'repo-card';
+        const touchClass = r.touch_type === 'MODIFICAR' ? 'badge-mod'
+                         : r.touch_type === 'NUEVO'     ? 'badge-new'
+                         :                                'badge-inv';
+        card.innerHTML = `
+          <div class="repo-card-header">
+            <span class="repo-card-name">${esc(r.repo)}</span>
+            <span class="badge ${touchClass}">${esc(r.touch_type)}</span>
+            <span class="repo-card-project">${esc(r.project)}</span>
+          </div>
+          <div class="repo-card-reason">${esc(r.reason)}</div>`;
+        cards.appendChild(card);
       });
-      setStep(0);
+      if (!analysis.repos_impacted?.length) {
+        cards.innerHTML = '<span class="comp-empty">No se identificaron repos</span>';
+      }
+      reposSection.appendChild(cards);
+      container.appendChild(reposSection);
+
+      // Endpoints
+      container.appendChild(listSection('Endpoints afectados', analysis.endpoints_affected));
+      // Schemas
+      container.appendChild(listSection('Schemas / DTOs', analysis.schemas_affected));
+      // DB
+      container.appendChild(listSection('Cambios en base de datos', analysis.db_changes));
+      // External
+      container.appendChild(listSection('Integraciones externas', analysis.external_integrations));
     }
 
-    function setStep(i) {
-      const steps = plan.steps || [];
-      if (!steps.length) return;
-      activeStep = Math.max(0, Math.min(i, steps.length - 1));
-      const s = steps[activeStep];
-
-      // update sidebar highlight
-      document.querySelectorAll('.step-item').forEach((el, j) => {
-        el.classList.toggle('active', j === activeStep);
-      });
-
-      // detail
-      $('stepPath').textContent = s.path;
-      $('stepDesc').textContent = s.description || '';
-      $('stepDesc').style.display = s.description ? 'block' : 'none';
-      $('stepCounter').textContent = `${activeStep + 1} / ${steps.length}`;
-
-      const codeEl = $('stepCode');
-      codeEl.textContent = s.code;
-      codeEl.className = 'hljs language-' + (s.language || 'plaintext');
-      try { hljs.highlightElement(codeEl); } catch(e) {}
-
-      $('prevBtn').disabled = activeStep === 0;
-      $('nextBtn').disabled = activeStep === steps.length - 1;
+    function section(title) {
+      const div = document.createElement('div');
+      const h = document.createElement('div');
+      h.className = 'comp-section-title';
+      h.textContent = title;
+      div.appendChild(h);
+      return div;
     }
 
-    $('prevBtn').addEventListener('click', () => setStep(activeStep - 1));
-    $('nextBtn').addEventListener('click', () => setStep(activeStep + 1));
-    $('copyCodeBtn').addEventListener('click', () => {
-      const s = (plan?.steps || [])[activeStep];
-      if (s) copyText(s.code, $('copyCodeBtn'));
-    });
+    function listSection(title, items) {
+      const div = section(title);
+      const list = document.createElement('div');
+      list.className = 'comp-list';
+      if (items?.length) {
+        items.forEach(item => {
+          const el = document.createElement('div');
+          el.className = 'comp-list-item';
+          el.textContent = item;
+          list.appendChild(el);
+        });
+      } else {
+        const el = document.createElement('span');
+        el.className = 'comp-empty';
+        el.textContent = 'Ninguno identificado';
+        list.appendChild(el);
+      }
+      div.appendChild(list);
+      return div;
+    }
 
     /* ── FLOW ── */
     function renderFlow() {
       const container = $('flowContainer');
       container.innerHTML = '';
-      const nodes = plan.flow || [];
+      const nodes = analysis.flow || [];
       nodes.forEach((n, i) => {
         const div = document.createElement('div');
         div.className = 'flow-node';
@@ -1174,70 +1010,46 @@
       });
     }
 
-    /* ── CHECKLIST ── */
-    function checklistKey() {
-      return 'ba_cl_' + simpleHash(plan?.title || '');
-    }
-    function loadCheckState() {
-      try { return JSON.parse(localStorage.getItem(checklistKey())) || {}; } catch { return {}; }
-    }
-    function saveCheckState(state) {
-      localStorage.setItem(checklistKey(), JSON.stringify(state));
-    }
+    /* ── SEÑALES & PREGUNTAS ── */
+    function renderSignals() {
+      const container = $('signalsContent');
+      container.innerHTML = '';
 
-    function renderChecklist() {
-      const groups = $('checklistGroups');
-      groups.innerHTML = '';
-      let state = loadCheckState();
-      let allItems = 0;
-
-      (plan.checklist || []).forEach(g => {
-        const div = document.createElement('div');
-        div.className = 'checklist-group';
-        div.innerHTML = `<div class="checklist-category">${esc(g.category)}</div>`;
-        const itemsDiv = document.createElement('div');
-        itemsDiv.className = 'checklist-items';
-
-        g.items.forEach(item => {
-          allItems++;
-          const itemKey = simpleHash(g.category + item);
-          const checked = !!state[itemKey];
-          const row = document.createElement('div');
-          row.className = 'checklist-item' + (checked ? ' checked' : '');
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.checked = checked;
-          cb.addEventListener('change', () => {
-            state[itemKey] = cb.checked;
-            saveCheckState(state);
-            row.classList.toggle('checked', cb.checked);
-            updateProgress();
-          });
-          const lbl = document.createElement('label');
-          lbl.textContent = item;
-          lbl.addEventListener('click', () => cb.click());
-          row.appendChild(cb);
-          row.appendChild(lbl);
-          itemsDiv.appendChild(row);
-        });
-
-        div.appendChild(itemsDiv);
-        groups.appendChild(div);
+      // Complexity signals
+      const sigSection = section('Señales de complejidad');
+      const chips = document.createElement('div');
+      chips.className = 'signals-chips';
+      (analysis.complexity_signals || []).forEach(s => {
+        const chip = document.createElement('span');
+        chip.className = 'signal-chip';
+        chip.textContent = s;
+        chips.appendChild(chip);
       });
+      if (!analysis.complexity_signals?.length) {
+        chips.innerHTML = '<span class="comp-empty">Sin señales de complejidad identificadas</span>';
+      }
+      sigSection.appendChild(chips);
+      container.appendChild(sigSection);
 
-      updateProgress();
+      // Open questions
+      const qSection = section('Preguntas abiertas para el refinamiento');
+      const qList = document.createElement('div');
+      qList.className = 'questions-list';
+      (analysis.open_questions || []).forEach((q, i) => {
+        const item = document.createElement('div');
+        item.className = 'question-item';
+        item.innerHTML = `<span class="question-num">${i + 1}.</span><span class="question-text">${esc(q)}</span>`;
+        qList.appendChild(item);
+      });
+      if (!analysis.open_questions?.length) {
+        qList.innerHTML = '<span class="comp-empty">No hay preguntas abiertas</span>';
+      }
+      qSection.appendChild(qList);
+      container.appendChild(qSection);
     }
 
-    function updateProgress() {
-      const all = document.querySelectorAll('#checklistGroups input[type="checkbox"]');
-      const done = [...all].filter(c => c.checked).length;
-      const pct = all.length ? Math.round(done / all.length * 100) : 0;
-      $('progressFill').style.width = pct + '%';
-      $('progressText').textContent = `${done}/${all.length} — ${pct}%`;
-    }
-
-    /* ── PLAN TAB ── */
-    function renderPlanTab(md) {
+    /* ── BRIEFING TAB ── */
+    function renderBriefTab(md) {
       $('markdownRaw').value = md || '';
       $('markdownPreview').innerHTML = marked.parse(md || '');
     }
@@ -1262,12 +1074,6 @@
         btn.textContent = 'Copiado ✓';
         setTimeout(() => { btn.textContent = orig; }, 1800);
       }).catch(() => {});
-    }
-
-    function simpleHash(s) {
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-      return Math.abs(h).toString(36);
     }
 
   })();

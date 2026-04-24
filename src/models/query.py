@@ -8,37 +8,35 @@ class AgentQuery(BaseModel):
     image_media_type: str | None = "image/jpeg"
 
 
-class PlanStep(BaseModel):
-    number: int
-    title: str
-    mode: str           # "NUEVO" | "MODIFICAR"
-    path: str
-    language: str       # "python" | "csharp" | "sql" | ...
-    code: str
-    description: str | None = None
+class RepoImpact(BaseModel):
+    repo: str
+    project: str                 # "Cantera" | "Progresol"
+    reason: str
+    touch_type: str              # "MODIFICAR" | "NUEVO" | "INVESTIGAR"
 
 
-class PlanFlowNode(BaseModel):
+class FlowNode(BaseModel):
     label: str
     detail: str | None = None
-    kind: str | None = None  # endpoint | schema | service | repo | orm | mapper | external
+    kind: str | None = None      # endpoint | schema | service | repo | orm | mapper | external
 
 
-class PlanChecklistGroup(BaseModel):
-    category: str
-    items: list[str]
-
-
-class AgentPlan(BaseModel):
+class RefinementAnalysis(BaseModel):
     title: str
-    steps: list[PlanStep]
-    flow: list[PlanFlowNode]
-    checklist: list[PlanChecklistGroup]
+    summary: str
+    repos_impacted: list[RepoImpact]
+    endpoints_affected: list[str]
+    schemas_affected: list[str]
+    db_changes: list[str]
+    external_integrations: list[str]
+    complexity_signals: list[str]
+    open_questions: list[str]
+    flow: list[FlowNode]
     markdown: str
 
 
 class AgentResponse(BaseModel):
-    answer: str                       # markdown completo (compat con clientes viejos)
-    plan: AgentPlan | None = None     # None si el agente no devolvió JSON válido
+    answer: str
+    analysis: RefinementAnalysis | None = None
     repos_consulted: list[str]
     files_fetched: list[str]
