@@ -55,5 +55,10 @@ def search(query: str, top_k: int = 8, project: str | None = None) -> list[dict]
     filt = None
     if project:
         filt = Filter(must=[FieldCondition(key="project", match=MatchValue(value=project))])
-    hits = _qdrant.search(COLLECTION, query_vector=qvec, limit=top_k, query_filter=filt)
-    return [h.payload | {"score": h.score} for h in hits]
+    result = _qdrant.query_points(
+        collection_name=COLLECTION,
+        query=qvec,
+        query_filter=filt,
+        limit=top_k,
+    )
+    return [h.payload | {"score": h.score} for h in result.points]
