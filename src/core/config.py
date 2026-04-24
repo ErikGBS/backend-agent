@@ -13,5 +13,8 @@ class Settings(BaseSettings):
     index_path: str = "data/index.json"
     api_key: str
 
+    openai_api_key: str
+    qdrant_url: str = "http://localhost:6333"
+
 
 settings = Settings()

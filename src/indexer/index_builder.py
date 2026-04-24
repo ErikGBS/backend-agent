@@ -6,7 +6,9 @@ from src.core.config import settings
 from src.indexer.azure_devops import AzureDevOpsClient
 from src.indexer.crawler_dotnet import crawl_dotnet_repo
 from src.indexer.crawler_python import crawl_python_repo
+from src.indexer.embedder import index_repo_vectors
 from src.models.index import GlobalIndex, RepoIndex
+from src.retrieval.vector_store import ensure_collection
 
 _PYTHON_KEYWORDS = ("python", "api", "bff", "functions")
 _DOTNET_KEYWORDS = (".net", "dotnet", "csharp", "functions")
@@ -57,6 +59,13 @@ async def build_index() -> GlobalIndex:
         last_updated=datetime.now(timezone.utc).isoformat(),
     )
     _persist(index)
+
+    print("[indexer] vectorizando repos...")
+    ensure_collection()
+    for repo_index in index.repos.values():
+        print(f"[indexer] embeddings: {repo_index.name}")
+        index_repo_vectors(repo_index)
+
     return index
 
 

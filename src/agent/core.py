@@ -9,6 +9,7 @@ from src.models.index import GlobalIndex
 from src.models.query import AgentPlan, AgentQuery, AgentResponse
 from src.retrieval.file_fetcher import fetch_relevant_files
 from src.retrieval.index_store import build_context_summary, search_repos
+from src.retrieval.vector_store import search as vector_search
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
@@ -25,8 +26,15 @@ def _extract_plan(raw: str) -> AgentPlan | None:
 
 
 async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
-    relevant_repos = search_repos(index, query.query, project=query.project)
-    fetched_files = await fetch_relevant_files(index, relevant_repos, query.query)
+    hits = vector_search(query.query, top_k=8, project=query.project)
+
+    if hits:
+        repo_names = list({h["repo"] for h in hits})
+        relevant_repos = [index.repos[r] for r in repo_names if r in index.repos]
+        fetched_files = {f"{h['repo']}:{h['file_path']}": h.get("text", "") for h in hits}
+    else:
+        relevant_repos = search_repos(index, query.query, project=query.project)
+        fetched_files = await fetch_relevant_files(index, relevant_repos, query.query)
 
     context = build_context_summary(relevant_repos)
     user_text = build_user_message(query.query, context, fetched_files)
