@@ -1,5 +1,21 @@
 from src.models.index import GlobalIndex, RepoIndex
 
+_FRONTEND_PATTERNS = (
+    "-ui",
+    "ui-kit",
+    "frontend",
+    "storefront",
+    "storagefront",
+    "mobile",
+    "seller-portal",
+    "-app",
+)
+
+
+def _is_frontend(repo_name: str) -> bool:
+    name = repo_name.lower()
+    return any(p in name for p in _FRONTEND_PATTERNS)
+
 
 def search_repos(index: GlobalIndex, query: str, project: str | None = None) -> list[RepoIndex]:
     query_lower = query.lower()
@@ -7,6 +23,8 @@ def search_repos(index: GlobalIndex, query: str, project: str | None = None) -> 
 
     scored: list[tuple[int, RepoIndex]] = []
     for repo in index.repos.values():
+        if _is_frontend(repo.name):
+            continue
         if project and repo.project != project:
             continue
 

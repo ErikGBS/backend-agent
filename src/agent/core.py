@@ -1,13 +1,27 @@
+import json
+import re
+
 import anthropic
 
 from src.agent.prompt import SYSTEM_PROMPT, build_user_message
 from src.core.config import settings
 from src.models.index import GlobalIndex
-from src.models.query import AgentQuery, AgentResponse
+from src.models.query import AgentPlan, AgentQuery, AgentResponse
 from src.retrieval.file_fetcher import fetch_relevant_files
 from src.retrieval.index_store import build_context_summary, search_repos
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+_JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+
+def _extract_plan(raw: str) -> AgentPlan | None:
+    text = _JSON_FENCE.sub("", raw).strip()
+    try:
+        data = json.loads(text)
+        return AgentPlan.model_validate(data)
+    except (json.JSONDecodeError, ValueError):
+        return None
 
 
 async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
@@ -31,9 +45,9 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
 
     content.append({"type": "text", "text": user_text})
 
-    response = await _client.messages.create(
+    async with _client.messages.stream(
         model=settings.claude_model,
-        max_tokens=4096,
+        max_tokens=32000,
         system=[
             {
                 "type": "text",
@@ -42,12 +56,16 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
             }
         ],
         messages=[{"role": "user", "content": content}],
-    )
+    ) as stream:
+        message = await stream.get_final_message()
 
-    answer = response.content[0].text
+    raw = message.content[0].text
+    plan = _extract_plan(raw)
+    answer_md = plan.markdown if plan else raw
 
     return AgentResponse(
-        answer=answer,
+        answer=answer_md,
+        plan=plan,
         repos_consulted=[r.name for r in relevant_repos],
         files_fetched=list(fetched_files.keys()),
     )

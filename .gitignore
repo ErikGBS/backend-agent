@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+*.egg-info/
 .ruff_cache/
 .pytest_cache/
 data/index.json
