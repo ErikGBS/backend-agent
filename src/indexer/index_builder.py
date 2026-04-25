@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 from src.core.config import settings
@@ -12,6 +13,12 @@ from src.models.index import GlobalIndex, RepoIndex
 from src.retrieval.vector_store import ensure_collection
 
 logger = logging.getLogger(__name__)
+
+# Serializes all write operations so concurrent webhooks don't race.
+index_lock = asyncio.Lock()
+
+# In-memory cache: avoids repeated disk reads on every query.
+_cache: GlobalIndex | None = None
 
 
 async def _index_repo(client: AzureDevOpsClient, project: str, repo: dict) -> RepoIndex | None:
@@ -51,7 +58,11 @@ async def build_index() -> GlobalIndex:
         repos=repos,
         last_updated=datetime.now(timezone.utc).isoformat(),
     )
-    _persist(index)
+
+    async with index_lock:
+        _persist(index)
+        _set_cache(index)
+
     logger.info("index_persisted repos=%d path=%s", len(repos), settings.index_path)
 
     ensure_collection()
@@ -64,13 +75,30 @@ async def build_index() -> GlobalIndex:
 
 
 def _persist(index: GlobalIndex) -> None:
-    with open(settings.index_path, "w", encoding="utf-8") as f:
+    """Atomic write: write to .tmp then rename so readers never see a partial file."""
+    tmp_path = settings.index_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(index.model_dump_json(indent=2))
+    os.replace(tmp_path, settings.index_path)
+
+
+def _set_cache(index: GlobalIndex) -> None:
+    global _cache
+    _cache = index
+
+
+def _clear_cache() -> None:
+    global _cache
+    _cache = None
 
 
 def load_index() -> GlobalIndex | None:
+    global _cache
+    if _cache is not None:
+        return _cache
     try:
         with open(settings.index_path, encoding="utf-8") as f:
-            return GlobalIndex.model_validate(json.load(f))
+            _cache = GlobalIndex.model_validate(json.load(f))
+        return _cache
     except FileNotFoundError:
         return None

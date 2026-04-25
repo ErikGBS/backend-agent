@@ -11,7 +11,7 @@ from src.indexer.azure_devops import AzureDevOpsClient
 from src.indexer.crawler_dotnet import crawl_dotnet_repo
 from src.indexer.crawler_python import crawl_python_repo
 from src.indexer.embedder import index_repo_vectors
-from src.indexer.index_builder import _persist, load_index
+from src.indexer.index_builder import _persist, _set_cache, index_lock, load_index
 from src.retrieval.vector_store import delete_repo_chunks, ensure_collection
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -45,10 +45,11 @@ async def _reindex_repo(project: str, repo_name: str, repo_id: str) -> None:
         else:
             repo_index = await crawl_python_repo(client, project, repo)
 
-        # Keep both layers in sync: persist JSON index first, then update Qdrant.
-        # Delete stale chunks before upserting so removed files don't linger.
-        index.repos[repo_name] = repo_index
-        _persist(index)
+        # Acquire lock so concurrent webhooks don't race on the index file.
+        async with index_lock:
+            index.repos[repo_name] = repo_index
+            _persist(index)
+            _set_cache(index)
 
         ensure_collection()
         delete_repo_chunks(repo_name)
