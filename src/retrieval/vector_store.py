@@ -2,7 +2,7 @@ import uuid
 
 from openai import OpenAI
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
+from qdrant_client.models import Distance, FieldCondition, Filter, FilterSelector, MatchValue, PointStruct, VectorParams
 
 from src.core.config import settings
 
@@ -32,6 +32,16 @@ def _batch_embed(texts: list[str]) -> list[list[float]]:
         input=[t[:8000] for t in texts],
     )
     return [d.embedding for d in resp.data]
+
+
+def delete_repo_chunks(repo_name: str) -> None:
+    """Remove all Qdrant points for a repo before re-indexing it."""
+    _qdrant.delete(
+        collection_name=COLLECTION,
+        points_selector=FilterSelector(
+            filter=Filter(must=[FieldCondition(key="repo", match=MatchValue(value=repo_name))])
+        ),
+    )
 
 
 def upsert_chunks(chunks: list[dict]) -> None:
