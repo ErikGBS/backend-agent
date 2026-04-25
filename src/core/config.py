@@ -16,5 +16,9 @@ class Settings(BaseSettings):
     openai_api_key: str
     qdrant_url: str = "http://localhost:6333"
 
+    # Optional: "username:password" configured in Azure DevOps Service Hook.
+    # If set, every webhook request must include matching Basic Auth header.
+    webhook_secret: str | None = None
+
 
 settings = Settings()

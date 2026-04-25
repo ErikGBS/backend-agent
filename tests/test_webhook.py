@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, call, patch
+import base64
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,11 @@ from src.main import app
 from src.models.index import EndpointInfo, GlobalIndex, RepoIndex
 
 from tests.conftest import VALID_ANALYSIS_DICT
+
+
+def basic_auth_header(user: str, password: str) -> str:
+    token = base64.b64encode(f"{user}:{password}".encode()).decode()
+    return f"Basic {token}"
 
 
 @pytest.fixture
@@ -47,6 +53,48 @@ class TestWebhookEndpoint:
         response = client.post("/api/v1/webhook/azure-devops", json={})
         assert response.status_code == 200
         assert response.json() == {"status": "accepted"}
+
+    def test_no_secret_configured_accepts_without_auth(self, client):
+        with patch("src.api.v1.webhook.settings") as mock_settings:
+            mock_settings.webhook_secret = None
+            response = client.post("/api/v1/webhook/azure-devops", json=push_payload())
+        assert response.status_code == 200
+
+    def test_valid_basic_auth_accepted(self, client):
+        with patch("src.api.v1.webhook.settings") as mock_settings:
+            mock_settings.webhook_secret = "azure:mysecret"
+            response = client.post(
+                "/api/v1/webhook/azure-devops",
+                json=push_payload(),
+                headers={"Authorization": basic_auth_header("azure", "mysecret")},
+            )
+        assert response.status_code == 200
+
+    def test_wrong_password_returns_401(self, client):
+        with patch("src.api.v1.webhook.settings") as mock_settings:
+            mock_settings.webhook_secret = "azure:mysecret"
+            response = client.post(
+                "/api/v1/webhook/azure-devops",
+                json=push_payload(),
+                headers={"Authorization": basic_auth_header("azure", "wrongpassword")},
+            )
+        assert response.status_code == 401
+
+    def test_missing_auth_header_returns_401(self, client):
+        with patch("src.api.v1.webhook.settings") as mock_settings:
+            mock_settings.webhook_secret = "azure:mysecret"
+            response = client.post("/api/v1/webhook/azure-devops", json=push_payload())
+        assert response.status_code == 401
+
+    def test_malformed_auth_header_returns_401(self, client):
+        with patch("src.api.v1.webhook.settings") as mock_settings:
+            mock_settings.webhook_secret = "azure:mysecret"
+            response = client.post(
+                "/api/v1/webhook/azure-devops",
+                json=push_payload(),
+                headers={"Authorization": "Bearer sometoken"},
+            )
+        assert response.status_code == 401
 
     def test_partial_payload_does_not_trigger_reindex(self, client):
         # Missing project.name → repo_id + repo_name present but project empty → no task added

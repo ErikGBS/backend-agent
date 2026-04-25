@@ -1,7 +1,9 @@
 import asyncio
+import base64
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
+from src.core.config import settings
 from src.indexer.azure_devops import AzureDevOpsClient
 from src.indexer.crawler_dotnet import crawl_dotnet_repo
 from src.indexer.crawler_python import crawl_python_repo
@@ -10,6 +12,17 @@ from src.indexer.index_builder import _persist, load_index
 from src.retrieval.vector_store import delete_repo_chunks, ensure_collection
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+
+def _verify_basic_auth(authorization: str | None) -> None:
+    """Validate Basic Auth header against WEBHOOK_SECRET. No-op if secret not configured."""
+    if not settings.webhook_secret:
+        return
+    expected = base64.b64encode(settings.webhook_secret.encode()).decode()
+    if not authorization or not authorization.startswith("Basic "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if authorization.removeprefix("Basic ").strip() != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 async def _reindex_repo(project: str, repo_name: str, repo_id: str) -> None:
@@ -44,7 +57,12 @@ async def _reindex_repo(project: str, repo_name: str, repo_id: str) -> None:
 
 
 @router.post("/azure-devops")
-async def azure_devops_hook(request: Request, background_tasks: BackgroundTasks) -> dict:
+async def azure_devops_hook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _verify_basic_auth(authorization)
     payload = await request.json()
 
     resource = payload.get("resource", {})
