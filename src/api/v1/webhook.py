@@ -1,7 +1,10 @@
 import asyncio
 import base64
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 from src.core.config import settings
 from src.indexer.azure_devops import AzureDevOpsClient
@@ -51,9 +54,9 @@ async def _reindex_repo(project: str, repo_name: str, repo_id: str) -> None:
         delete_repo_chunks(repo_name)
         index_repo_vectors(repo_index)
 
-        print(f"[webhook] re-indexado: {repo_name}")
+        logger.info("reindex_done repo=%s project=%s", repo_name, project)
     except Exception as exc:
-        print(f"[webhook] error re-indexando {repo_name}: {exc}")
+        logger.error("reindex_failed repo=%s project=%s error=%s", repo_name, project, exc)
 
 
 @router.post("/azure-devops")
@@ -72,6 +75,7 @@ async def azure_devops_hook(
     project = repo_info.get("project", {}).get("name", "")
 
     if repo_id and repo_name and project:
+        logger.info("reindex_triggered repo=%s project=%s", repo_name, project)
         background_tasks.add_task(_reindex_repo, project, repo_name, repo_id)
 
     return {"status": "accepted"}

@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 
 import anthropic
@@ -8,6 +9,8 @@ from src.agent.tools import TOOLS, execute_tool
 from src.core.config import settings
 from src.models.index import GlobalIndex
 from src.models.query import AgentQuery, AgentResponse, RefinementAnalysis
+
+logger = logging.getLogger(__name__)
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
@@ -45,6 +48,9 @@ def _build_initial_content(query: AgentQuery) -> list[dict]:
 
 
 async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
+    query_preview = query.query[:80].replace("\n", " ")
+    logger.info("query_start project=%s query=%r", query.project or "all", query_preview)
+
     messages: list[dict] = [{"role": "user", "content": _build_initial_content(query)}]
     repos_used: set[str] = set()
     files_used: list[str] = []
@@ -69,6 +75,18 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
         if response.stop_reason == "end_turn":
             raw = next((b.text for b in response.content if b.type == "text"), "")
             analysis = _extract_analysis(raw)
+            if analysis:
+                logger.info(
+                    "query_done rounds=%d json_valid=true repos=%s",
+                    tool_round,
+                    ",".join(repos_used) or "none",
+                )
+            else:
+                logger.warning(
+                    "query_done rounds=%d json_valid=false raw_preview=%r",
+                    tool_round,
+                    raw[:120],
+                )
             return AgentResponse(
                 answer=analysis.markdown if analysis else raw,
                 analysis=analysis,
@@ -82,6 +100,12 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
 
             for block in response.content:
                 if block.type == "tool_use":
+                    inputs_preview = {
+                        k: (v[:60] if isinstance(v, str) else v)
+                        for k, v in block.input.items()
+                    }
+                    logger.info("tool_call round=%d tool=%s inputs=%s", tool_round + 1, block.name, inputs_preview)
+
                     result = await execute_tool(block.name, block.input, index)
                     tool_results.append({
                         "type": "tool_result",
@@ -95,10 +119,9 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
 
             tool_round += 1
             if tool_round >= _MAX_TOOL_ROUNDS:
-                # Force the model to produce the final JSON on the next call
+                logger.warning("max_tool_rounds reached rounds=%d — forcing final output", tool_round)
                 messages.append({"role": "user", "content": tool_results})
                 messages.append({"role": "user", "content": [{"type": "text", "text": _FORCE_OUTPUT_MSG}]})
-                # One final call without tools to get the JSON
                 final = await _client.messages.create(
                     model=settings.claude_model,
                     max_tokens=8192,
@@ -107,6 +130,8 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
                 )
                 raw = next((b.text for b in final.content if hasattr(b, "text")), "")
                 analysis = _extract_analysis(raw)
+                if not analysis:
+                    logger.warning("forced_output json_valid=false raw_preview=%r", raw[:120])
                 return AgentResponse(
                     answer=analysis.markdown if analysis else raw,
                     analysis=analysis,
@@ -117,7 +142,8 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
             messages.append({"role": "user", "content": tool_results})
             continue
 
-        # Unexpected stop reason (e.g. max_tokens) — return what we have
+        # Unexpected stop reason (e.g. max_tokens)
+        logger.warning("unexpected_stop stop_reason=%s rounds=%d", response.stop_reason, tool_round)
         raw = next((b.text for b in response.content if hasattr(b, "text")), "")
         analysis = _extract_analysis(raw)
         return AgentResponse(

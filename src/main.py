@@ -1,8 +1,18 @@
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 
 from src.api.v1.agent import router as agent_router
 from src.api.v1.webhook import router as webhook_router
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 app = FastAPI(
     title="Backend Agent",

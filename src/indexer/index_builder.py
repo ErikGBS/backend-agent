@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 
 from src.core.config import settings
@@ -9,6 +10,9 @@ from src.indexer.crawler_python import crawl_python_repo
 from src.indexer.embedder import index_repo_vectors
 from src.models.index import GlobalIndex, RepoIndex
 from src.retrieval.vector_store import ensure_collection
+
+logger = logging.getLogger(__name__)
+
 
 async def _index_repo(client: AzureDevOpsClient, project: str, repo: dict) -> RepoIndex | None:
     try:
@@ -20,7 +24,7 @@ async def _index_repo(client: AzureDevOpsClient, project: str, repo: dict) -> Re
             return await crawl_dotnet_repo(client, project, repo)
         return await crawl_python_repo(client, project, repo)
     except Exception as exc:
-        print(f"[indexer] error en {repo['name']}: {exc}")
+        logger.error("index_repo_failed repo=%s error=%s", repo["name"], exc)
         return None
 
 
@@ -35,6 +39,7 @@ async def build_index() -> GlobalIndex:
             tasks.append(_index_repo(client, project, repo))
             repo_list.append(repo["name"])
 
+    logger.info("index_start repos=%s", repo_list)
     results = await asyncio.gather(*tasks)
 
     repos: dict[str, RepoIndex] = {}
@@ -47,13 +52,14 @@ async def build_index() -> GlobalIndex:
         last_updated=datetime.now(timezone.utc).isoformat(),
     )
     _persist(index)
+    logger.info("index_persisted repos=%d path=%s", len(repos), settings.index_path)
 
-    print("[indexer] vectorizando repos...")
     ensure_collection()
     for repo_index in index.repos.values():
-        print(f"[indexer] embeddings: {repo_index.name}")
+        logger.info("vectorizing repo=%s", repo_index.name)
         index_repo_vectors(repo_index)
 
+    logger.info("index_done repos=%d", len(repos))
     return index
 
 
