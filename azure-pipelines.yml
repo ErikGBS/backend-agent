@@ -1,0 +1,55 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  pythonVersion: "3.11"
+
+stages:
+  - stage: CI
+    displayName: Lint & Test
+    jobs:
+      - job: lint
+        displayName: Ruff lint & format check
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: pip install ruff
+            displayName: Install ruff
+
+          - script: ruff check src/ tests/
+            displayName: ruff check
+
+          - script: ruff format --check src/ tests/
+            displayName: ruff format
+
+      - job: test
+        displayName: pytest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: pip install -e ".[dev]"
+            displayName: Install dependencies
+
+          - script: pytest tests/ -v --tb=short
+            displayName: Run tests
+            env:
+              ANTHROPIC_API_KEY: test-key
+              AZURE_DEVOPS_ORG: test-org
+              AZURE_DEVOPS_PAT: test-pat
+              OPENAI_API_KEY: test-openai-key
+              QDRANT_URL: http://localhost:6333
+              API_KEY: test-api-key
