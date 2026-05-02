@@ -6,9 +6,10 @@ TOOLS = [
     {
         "name": "search_code",
         "description": (
-            "Busca fragmentos de código semánticamente relacionados con la consulta "
-            "en los repos indexados de Cantera y Progresol. Úsalo primero para explorar "
-            "qué código existe antes de pedir archivos completos."
+            "Busca fragmentos de código semánticamente relacionados con la consulta. "
+            "Si el usuario seleccionó un proyecto, el sistema ya filtra automáticamente "
+            "los resultados a ese proyecto: NO menciones ni propongas repos que no "
+            "aparezcan en los resultados de las herramientas."
         ),
         "input_schema": {
             "type": "object",
@@ -17,17 +18,16 @@ TOOLS = [
                     "type": "string",
                     "description": "Consulta en lenguaje natural sobre el código a buscar",
                 },
-                "project": {
-                    "type": "string",
-                    "description": "Filtrar por proyecto: 'Cantera' o 'Progresol'. Omitir para buscar en ambos.",
-                },
             },
             "required": ["query"],
         },
     },
     {
         "name": "fetch_file",
-        "description": "Obtiene el contenido completo de un archivo específico de Azure DevOps.",
+        "description": (
+            "Obtiene el contenido completo de un archivo específico. "
+            "El sistema infiere el proyecto a partir del repo, no necesitas pasarlo."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -36,12 +36,8 @@ TOOLS = [
                     "type": "string",
                     "description": "Path del archivo (ej: /app/application/services/quotation_service.py)",
                 },
-                "project": {
-                    "type": "string",
-                    "description": "Nombre del proyecto: 'Cantera' o 'Progresol'",
-                },
             },
-            "required": ["repo", "path", "project"],
+            "required": ["repo", "path"],
         },
     },
     {
@@ -65,10 +61,6 @@ TOOLS = [
                     "type": "string",
                     "description": "Nombre de la clase o schema a buscar",
                 },
-                "project": {
-                    "type": "string",
-                    "description": "Filtrar por proyecto. Omitir para buscar en ambos.",
-                },
             },
             "required": ["class_name"],
         },
@@ -76,9 +68,15 @@ TOOLS = [
 ]
 
 
-async def execute_tool(name: str, inputs: dict, index: GlobalIndex) -> str:
+async def execute_tool(
+    name: str,
+    inputs: dict,
+    index: GlobalIndex,
+    user_project: str | None = None,
+) -> str:
     if name == "search_code":
-        hits = vector_search(inputs["query"], top_k=6, project=inputs.get("project"))
+        project = user_project
+        hits = vector_search(inputs["query"], top_k=6, project=project)
         if not hits:
             return "No se encontraron resultados para esa búsqueda."
         parts = [
@@ -88,11 +86,17 @@ async def execute_tool(name: str, inputs: dict, index: GlobalIndex) -> str:
         return "\n\n".join(parts)
 
     if name == "fetch_file":
+        repo = index.repos.get(inputs["repo"])
+        project = user_project or (repo.project if repo else None)
+        if not project:
+            return (
+                f"Repo '{inputs['repo']}' no está en el índice y no hay proyecto seleccionado. "
+                f"Disponibles: {', '.join(index.repos.keys())}"
+            )
         client = AzureDevOpsClient()
         try:
-            repo = index.repos.get(inputs["repo"])
             repo_id = repo.repo_id if repo else inputs["repo"]
-            content = await client.get_file_content(inputs["project"], repo_id, inputs["path"])
+            content = await client.get_file_content(project, repo_id, inputs["path"])
             return f"### {inputs['repo']}:{inputs['path']}\n```\n{content[:5000]}\n```"
         except Exception as exc:
             return f"Error al obtener el archivo: {exc}"
@@ -108,7 +112,7 @@ async def execute_tool(name: str, inputs: dict, index: GlobalIndex) -> str:
 
     if name == "get_schema":
         class_lower = inputs["class_name"].lower()
-        project = inputs.get("project")
+        project = user_project
         matches = []
         for repo in index.repos.values():
             if project and repo.project != project:

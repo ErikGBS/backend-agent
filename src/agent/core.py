@@ -106,7 +106,7 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
                     }
                     logger.info("tool_call round=%d tool=%s inputs=%s", tool_round + 1, block.name, inputs_preview)
 
-                    result = await execute_tool(block.name, block.input, index)
+                    result = await execute_tool(block.name, block.input, index, query.project)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
