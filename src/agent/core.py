@@ -1,8 +1,11 @@
 import json
 import logging
+import os
 import re
 
 import anthropic
+from langsmith import traceable
+from langsmith.wrappers import wrap_anthropic
 
 from src.agent.prompt import SYSTEM_PROMPT
 from src.agent.tools import TOOLS, execute_tool
@@ -12,7 +15,15 @@ from src.models.query import AgentQuery, AgentResponse, RefinementAnalysis
 
 logger = logging.getLogger(__name__)
 
-_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+# Configure LangSmith env vars before wrapping the client
+if settings.langsmith_tracing:
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    if settings.langsmith_api_key:
+        os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+
+_raw_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+_client = wrap_anthropic(_raw_client) if settings.langsmith_tracing else _raw_client
 
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _MAX_TOOL_ROUNDS = 10
@@ -47,6 +58,7 @@ def _build_initial_content(query: AgentQuery) -> list[dict]:
     return content
 
 
+@traceable(name="backend-agent/run", tags=["agent"])
 async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
     query_preview = query.query[:80].replace("\n", " ")
     logger.info("query_start project=%s query=%r", query.project or "all", query_preview)

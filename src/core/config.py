@@ -20,5 +20,10 @@ class Settings(BaseSettings):
     # If set, every webhook request must include matching Basic Auth header.
     webhook_secret: str | None = None
 
+    # LangSmith observability (optional — set LANGSMITH_TRACING=true to enable)
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "backend-agent"
+
 
 settings = Settings()
