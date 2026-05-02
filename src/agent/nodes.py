@@ -1,5 +1,7 @@
 import logging
 
+from langgraph.types import interrupt
+
 from src.agent.prompt import SYSTEM_PROMPT
 from src.agent.reflection import reflect
 from src.agent.state import AgentState
@@ -69,6 +71,36 @@ async def node_execute_tools(state: AgentState) -> dict:
         "files_used": files_used,
         "tool_round": new_tool_round,
     }
+
+
+def node_human_review(state: AgentState) -> dict:
+    """Pause the graph and wait for human approval.
+
+    The interrupt payload is sent back to the caller via the API.
+    When the graph is resumed, `human_decision` is injected into state.
+
+    Expected decisions:
+      "approve"              → accept analysis, proceed to END
+      "investigate:<text>"   → agent investigates more with that context
+    """
+    analysis = state.get("analysis")
+    reflection = state.get("reflection")
+
+    payload = {
+        "message": "El análisis requiere revisión. ¿Apruebas o quieres que investigue más?",
+        "analysis_title": analysis.title if analysis else "Sin título",
+        "analysis_summary": analysis.summary if analysis else "",
+        "reflection_verdict": reflection.verdict if reflection else "",
+        "gaps": reflection.gaps if reflection else [],
+        "options": {
+            "approve": "Aceptar el análisis tal como está",
+            "investigate:<instrucción>": "Investigar puntos adicionales antes de finalizar",
+        },
+    }
+
+    decision = interrupt(payload)  # ← graph pauses here until resume
+    logger.info("node_human_review decision=%r", decision)
+    return {"human_decision": decision}
 
 
 async def node_reflect(state: AgentState, client) -> dict:

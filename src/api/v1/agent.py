@@ -2,8 +2,10 @@ import markdown as md
 from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 
-from src.agent.core import run_agent, run_agent_stream, run_graph
+from src.agent.core import run_agent, run_agent_stream
+from src.agent.graph import resume_graph, run_graph
 from src.core.config import settings
 from src.indexer.index_builder import load_index
 from src.models.query import AgentQuery, AgentResponse
@@ -65,17 +67,76 @@ async def query_agent(
     return await run_agent(body, index)
 
 
-@router.post("/query/v2", response_model=AgentResponse)
+class V2Request(AgentQuery):
+    thread_id: str = "default"
+
+
+class V2Response(AgentResponse):
+    thread_id: str
+    interrupted: bool = False
+    review_request: dict | None = None
+
+
+class ResumeRequest(BaseModel):
+    thread_id: str
+    decision: str  # "approve" | "investigate:<instrucción>"
+
+
+@router.post("/query/v2")
 async def query_agent_v2(
-    body: AgentQuery,
+    body: V2Request,
     _: str = Depends(_verify_api_key),
-) -> AgentResponse:
-    """LangGraph-powered endpoint. Same contract as /query but backed by the state graph."""
+) -> V2Response:
+    """LangGraph-powered endpoint con soporte Human-in-the-Loop.
+
+    Si reflection detecta gaps, el grafo se pausa y devuelve:
+      - interrupted=true
+      - review_request con el análisis parcial y los gaps detectados
+
+    Para continuar, llama a POST /query/v2/resume con tu decisión.
+    """
     index = load_index()
     if not index:
         raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
     from src.agent.core import _raw_client
-    return await run_graph(body, index, _raw_client)
+    result = await run_graph(body, index, _raw_client, thread_id=body.thread_id)
+
+    if result.interrupted:
+        return V2Response(
+            answer="Análisis en pausa — esperando revisión.",
+            analysis=None,
+            repos_consulted=[],
+            files_fetched=[],
+            thread_id=result.thread_id,
+            interrupted=True,
+            review_request=result.interrupt_payload,
+        )
+
+    return V2Response(
+        **result.response.model_dump(),
+        thread_id=result.thread_id,
+        interrupted=False,
+    )
+
+
+@router.post("/query/v2/resume")
+async def resume_agent_v2(
+    body: ResumeRequest,
+    _: str = Depends(_verify_api_key),
+) -> V2Response:
+    """Retoma un análisis pausado por Human-in-the-Loop.
+
+    Decisiones válidas:
+      - "approve"                    → acepta el análisis tal como está
+      - "investigate:<instrucción>"  → investiga más antes de finalizar
+    """
+    from src.agent.core import _raw_client
+    result = await resume_graph(body.thread_id, body.decision, _raw_client)
+    return V2Response(
+        **result.response.model_dump(),
+        thread_id=result.thread_id,
+        interrupted=result.interrupted,
+    )
 
 
 @router.post("/stream")

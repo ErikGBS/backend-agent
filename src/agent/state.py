@@ -22,3 +22,9 @@ class AgentState(TypedDict):
     # Output
     analysis: RefinementAnalysis | None
     reflection: ReflectionResult | None
+
+    # Human-in-the-loop
+    # "approve" → accept analysis as-is
+    # "investigate:<text>" → investigate additional context before finalizing
+    # None → HITL not triggered yet
+    human_decision: str | None
