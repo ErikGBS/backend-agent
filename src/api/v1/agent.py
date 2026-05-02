@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 
-from src.agent.core import run_agent, run_agent_stream
+from src.agent.core import run_agent, run_agent_stream, run_graph
 from src.core.config import settings
 from src.indexer.index_builder import load_index
 from src.models.query import AgentQuery, AgentResponse
@@ -63,6 +63,19 @@ async def query_agent(
     if not index:
         raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
     return await run_agent(body, index)
+
+
+@router.post("/query/v2", response_model=AgentResponse)
+async def query_agent_v2(
+    body: AgentQuery,
+    _: str = Depends(_verify_api_key),
+) -> AgentResponse:
+    """LangGraph-powered endpoint. Same contract as /query but backed by the state graph."""
+    index = load_index()
+    if not index:
+        raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
+    from src.agent.core import _raw_client
+    return await run_graph(body, index, _raw_client)
 
 
 @router.post("/stream")

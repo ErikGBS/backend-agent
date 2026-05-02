@@ -15,6 +15,9 @@ from src.core.config import settings
 from src.models.index import GlobalIndex
 from src.models.query import AgentQuery, AgentResponse, RefinementAnalysis
 
+# Re-export LangGraph runner so the API layer can import from one place
+from src.agent.graph import run_graph as run_graph  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # Configure LangSmith env vars before wrapping the client
