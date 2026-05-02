@@ -40,3 +40,5 @@ class AgentResponse(BaseModel):
     analysis: RefinementAnalysis | None = None
     repos_consulted: list[str]
     files_fetched: list[str]
+    reflection_approved: bool | None = None
+    reflection_verdict: str | None = None

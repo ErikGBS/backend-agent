@@ -9,6 +9,7 @@ from langsmith import traceable
 from langsmith.wrappers import wrap_anthropic
 
 from src.agent.prompt import SYSTEM_PROMPT
+from src.agent.reflection import ReflectionResult, reflect
 from src.agent.tools import TOOLS, execute_tool
 from src.core.config import settings
 from src.models.index import GlobalIndex
@@ -28,6 +29,7 @@ _client = wrap_anthropic(_raw_client) if settings.langsmith_tracing else _raw_cl
 
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _MAX_TOOL_ROUNDS = 10
+_MAX_REFLECTION_ROUNDS = 1  # máximo 1 ciclo de reflection para no inflar costos
 _FORCE_OUTPUT_MSG = (
     "Ya tienes suficiente contexto del código. "
     "Genera AHORA el JSON de RefinementAnalysis con toda la información que has recopilado. "
@@ -69,6 +71,7 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
     files_used: list[str] = []
     response = None
     tool_round = 0
+    reflection_round = 0
 
     while True:
         response = await _client.messages.create(
@@ -88,23 +91,52 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
         if response.stop_reason == "end_turn":
             raw = next((b.text for b in response.content if b.type == "text"), "")
             analysis = _extract_analysis(raw)
-            if analysis:
-                logger.info(
-                    "query_done rounds=%d json_valid=true repos=%s",
-                    tool_round,
-                    ",".join(repos_used) or "none",
+            if not analysis:
+                logger.warning("query_done rounds=%d json_valid=false raw_preview=%r", tool_round, raw[:120])
+                return AgentResponse(
+                    answer=raw,
+                    analysis=None,
+                    repos_consulted=list(repos_used),
+                    files_fetched=files_used,
                 )
-            else:
-                logger.warning(
-                    "query_done rounds=%d json_valid=false raw_preview=%r",
-                    tool_round,
-                    raw[:120],
+
+            # Reflection: evalúa calidad y relanza si hay gaps concretos
+            reflection: ReflectionResult | None = None
+            if reflection_round < _MAX_REFLECTION_ROUNDS:
+                reflection = await reflect(
+                    query, analysis, list(repos_used), files_used, _raw_client, settings.claude_model
                 )
+                if not reflection.approved and reflection.gaps:
+                    reflection_round += 1
+                    gaps_text = "\n".join(f"- {g}" for g in reflection.gaps)
+                    logger.info("reflection_retry round=%d gaps=%d", reflection_round, len(reflection.gaps))
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": (
+                                "El análisis necesita completarse. Investiga estos puntos adicionales "
+                                "usando las herramientas disponibles y luego regenera el JSON completo:\n"
+                                f"{gaps_text}"
+                            ),
+                        }],
+                    })
+                    continue  # relanza el loop con el contexto enriquecido
+
+            logger.info(
+                "query_done rounds=%d reflection_approved=%s repos=%s",
+                tool_round,
+                reflection.approved if reflection else "skipped",
+                ",".join(repos_used) or "none",
+            )
             return AgentResponse(
-                answer=analysis.markdown if analysis else raw,
+                answer=analysis.markdown,
                 analysis=analysis,
                 repos_consulted=list(repos_used),
                 files_fetched=files_used,
+                reflection_approved=reflection.approved if reflection else None,
+                reflection_verdict=reflection.verdict if reflection else None,
             )
 
         if response.stop_reason == "tool_use":
