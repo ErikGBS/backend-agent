@@ -1,5 +1,6 @@
 from src.indexer.azure_devops import AzureDevOpsClient
 from src.models.index import GlobalIndex
+from src.retrieval.reranker import rerank
 from src.retrieval.vector_store import search as vector_search
 
 TOOLS = [
@@ -76,11 +77,13 @@ async def execute_tool(
 ) -> str:
     if name == "search_code":
         project = user_project
-        hits = vector_search(inputs["query"], top_k=6, project=project)
+        # Fetch 2x candidates so the reranker has room to re-order
+        hits = vector_search(inputs["query"], top_k=12, project=project)
         if not hits:
             return "No se encontraron resultados para esa búsqueda."
+        hits = rerank(inputs["query"], hits, top_n=6)
         parts = [
-            f"### {h['repo']}:{h['file_path']} (score: {h['score']:.2f})\n```\n{h.get('text', '')}\n```"
+            f"### {h['repo']}:{h['file_path']} (relevance: {h.get('rerank_score', 0):.3f})\n```\n{h.get('text', '')}\n```"
             for h in hits
         ]
         return "\n\n".join(parts)
