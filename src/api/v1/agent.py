@@ -1,8 +1,10 @@
+import uuid
+
 import markdown as md
 from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.agent.core import run_agent, run_agent_stream
 from src.agent.graph import resume_graph, run_graph
@@ -68,7 +70,7 @@ async def query_agent(
 
 
 class V2Request(AgentQuery):
-    thread_id: str = "default"
+    thread_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
 class V2Response(AgentResponse):

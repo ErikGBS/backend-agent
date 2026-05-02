@@ -1,13 +1,12 @@
-import json
 import logging
 import os
-import re
 from collections.abc import AsyncGenerator
 
 import anthropic
 from langsmith import traceable
 from langsmith.wrappers import wrap_anthropic
 
+from src.agent.parsers import extract_analysis as _extract_analysis, serialize_content  # noqa: F401
 from src.agent.prompt import SYSTEM_PROMPT
 from src.agent.reflection import ReflectionResult, reflect
 from src.agent.tools import TOOLS, execute_tool
@@ -30,7 +29,6 @@ if settings.langsmith_tracing:
 _raw_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 _client = wrap_anthropic(_raw_client) if settings.langsmith_tracing else _raw_client
 
-_JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _MAX_TOOL_ROUNDS = 10
 _MAX_REFLECTION_ROUNDS = 1  # máximo 1 ciclo de reflection para no inflar costos
 _FORCE_OUTPUT_MSG = (

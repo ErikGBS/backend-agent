@@ -19,10 +19,8 @@ _checkpointer = MemorySaver()
 # ── Edge conditions ──────────────────────────────────────────────
 
 def _after_model(state: AgentState) -> str:
-    last_response = state.get("_last_response")
-    if last_response is None:
-        return "reflect"
-    if last_response.stop_reason == "tool_use" and state["tool_round"] < 10:
+    stop_reason = state.get("_stop_reason", "")
+    if stop_reason == "tool_use" and state["tool_round"] < 10:
         return "execute_tools"
     return "reflect"
 
@@ -51,8 +49,15 @@ def _after_human_review(state: AgentState) -> str:
 
 # ── Graph builder ────────────────────────────────────────────────
 
+_graph_cache: dict = {}  # client_id → compiled graph
+
+
 def build_graph(client):
-    """Build and compile the StateGraph with HITL support."""
+    """Build and compile the StateGraph with HITL support. Cached per client instance."""
+    key = id(client)
+    if key in _graph_cache:
+        return _graph_cache[key]
+
     graph = StateGraph(AgentState)
 
     graph.add_node("call_model",    partial(node_call_model, client=client))
@@ -76,7 +81,9 @@ def build_graph(client):
         {"call_model": "call_model", END: END},
     )
 
-    return graph.compile(checkpointer=_checkpointer)
+    compiled = graph.compile(checkpointer=_checkpointer)
+    _graph_cache[key] = compiled
+    return compiled
 
 
 # ── Public runners ───────────────────────────────────────────────
@@ -109,14 +116,14 @@ async def run_graph(
             "messages": [{"role": "user", "content": _build_initial_content(query)}],
             "query": query,
             "index": index,
-            "repos_used": set(),
+            "repos_used": [],
             "files_used": [],
             "tool_round": 0,
             "reflection_round": 0,
+            "_stop_reason": "",
             "analysis": None,
             "reflection": None,
             "human_decision": None,
-            "_last_response": None,
         }
         final = await graph.ainvoke(initial_state, config)
 
