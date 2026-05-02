@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from functools import partial
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -6,7 +7,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Command
 
 from src.agent.nodes import node_call_model, node_execute_tools, node_human_review, node_reflect
-from src.agent.parsers import build_initial_content  # no circular import — parsers has no graph/core deps
+from src.agent.parsers import build_initial_content
 from src.agent.state import AgentState
 from src.models.index import GlobalIndex
 from src.models.query import AgentQuery, AgentResponse
@@ -14,7 +15,7 @@ from src.models.query import AgentQuery, AgentResponse
 logger = logging.getLogger(__name__)
 
 _checkpointer = MemorySaver()
-_graph_cache: dict = {}
+_graph_cache: dict = {}  # (id(client), id(index)) → compiled graph
 
 
 # ── Edge conditions ──────────────────────────────────────────────
@@ -64,15 +65,15 @@ def node_prepare_investigation(state: AgentState) -> dict:
 
 # ── Graph builder ────────────────────────────────────────────────
 
-def build_graph(client):
-    key = id(client)
+def build_graph(client, index: GlobalIndex):
+    key = (id(client), id(index))
     if key in _graph_cache:
         return _graph_cache[key]
 
     graph = StateGraph(AgentState)
 
     graph.add_node("call_model",            partial(node_call_model, client=client))
-    graph.add_node("execute_tools",         node_execute_tools)
+    graph.add_node("execute_tools",         partial(node_execute_tools, index=index))
     graph.add_node("reflect",               partial(node_reflect, client=client))
     graph.add_node("human_review",          node_human_review)
     graph.add_node("prepare_investigation", node_prepare_investigation)
@@ -125,13 +126,12 @@ async def run_graph(
     client,
     thread_id: str = "default",
 ) -> "GraphRunResult":
-    graph = build_graph(client)
+    graph = build_graph(client, index)
     config = _make_config(thread_id)
 
     initial_state: AgentState = {
         "messages": [{"role": "user", "content": build_initial_content(query)}],
         "query": query,
-        "index": index,
         "repos_used": [],
         "files_used": [],
         "tool_round": 0,
@@ -168,9 +168,9 @@ async def run_graph(
     )
 
 
-async def resume_graph(thread_id: str, decision: str, client) -> "GraphRunResult":
+async def resume_graph(thread_id: str, decision: str, client, index: GlobalIndex) -> "GraphRunResult":
     """Resume an interrupted graph using Command(resume=...) — the documented LangGraph pattern."""
-    graph = build_graph(client)
+    graph = build_graph(client, index)
     config = _make_config(thread_id)
 
     final = await graph.ainvoke(Command(resume=decision), config)
@@ -194,9 +194,9 @@ async def resume_graph(thread_id: str, decision: str, client) -> "GraphRunResult
     )
 
 
+@dataclass
 class GraphRunResult:
-    def __init__(self, thread_id, interrupted, interrupt_payload, response):
-        self.thread_id = thread_id
-        self.interrupted = interrupted
-        self.interrupt_payload = interrupt_payload
-        self.response = response
+    thread_id: str
+    interrupted: bool
+    interrupt_payload: dict | None
+    response: AgentResponse | None  # None only when interrupted=True

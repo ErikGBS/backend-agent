@@ -8,6 +8,7 @@ from src.agent.reflection import reflect
 from src.agent.state import AgentState
 from src.agent.tools import TOOLS, execute_tool
 from src.core.config import settings
+from src.models.index import GlobalIndex
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,12 @@ async def node_call_model(state: AgentState, client) -> dict:
     }
 
 
-async def node_execute_tools(state: AgentState) -> dict:
-    """Execute all tool calls from the last assistant message."""
+async def node_execute_tools(state: AgentState, index: GlobalIndex) -> dict:
+    """Execute all tool calls from the last assistant message.
+
+    index is injected via functools.partial in build_graph — not stored in state
+    to keep AgentState fully JSON-serializable for all LangGraph checkpointers.
+    """
     last_content = state["messages"][-1]["content"]  # already plain dicts
     tool_results = []
     repos_used = list(state["repos_used"])
@@ -51,7 +56,7 @@ async def node_execute_tools(state: AgentState) -> dict:
             continue
 
         logger.info("node_execute_tools tool=%s round=%d", block["name"], state["tool_round"] + 1)
-        result = await execute_tool(block["name"], block["input"], state["index"], state["query"].project)
+        result = await execute_tool(block["name"], block["input"], index, state["query"].project)
         tool_results.append({"type": "tool_result", "tool_use_id": block["id"], "content": result})
 
         if "repo" in block["input"] and block["input"]["repo"] not in repos_used:
