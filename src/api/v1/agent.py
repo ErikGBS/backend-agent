@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.agent.core import run_agent, run_agent_stream
 from src.agent.graph import resume_graph, run_graph
+from src.agent.core import _raw_client as _agent_client
 from src.core.config import settings
 from src.indexer.index_builder import load_index
 from src.models.query import AgentQuery, AgentResponse
@@ -100,8 +101,7 @@ async def query_agent_v2(
     index = load_index()
     if not index:
         raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
-    from src.agent.core import _raw_client
-    result = await run_graph(body, index, _raw_client, thread_id=body.thread_id)
+    result = await run_graph(body, index, _agent_client, thread_id=body.thread_id)
 
     if result.interrupted:
         return V2Response(
@@ -132,8 +132,7 @@ async def resume_agent_v2(
       - "approve"                    → acepta el análisis tal como está
       - "investigate:<instrucción>"  → investiga más antes de finalizar
     """
-    from src.agent.core import _raw_client
-    result = await resume_graph(body.thread_id, body.decision, _raw_client)
+    result = await resume_graph(body.thread_id, body.decision, _agent_client)
     return V2Response(
         **result.response.model_dump(),
         thread_id=result.thread_id,

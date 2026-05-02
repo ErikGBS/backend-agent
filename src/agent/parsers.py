@@ -1,7 +1,7 @@
 import json
 import re
 
-from src.models.query import RefinementAnalysis
+from src.models.query import AgentQuery, RefinementAnalysis
 
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
@@ -13,6 +13,22 @@ def extract_analysis(raw: str) -> RefinementAnalysis | None:
         return RefinementAnalysis.model_validate(data)
     except (json.JSONDecodeError, ValueError):
         return None
+
+
+def build_initial_content(query: AgentQuery) -> list[dict]:
+    """Build the initial user message content from a query."""
+    content: list[dict] = []
+    if query.image_base64:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": query.image_media_type or "image/jpeg",
+                "data": query.image_base64,
+            },
+        })
+    content.append({"type": "text", "text": f"## Consulta\n{query.query}"})
+    return content
 
 
 def serialize_content(content) -> list[dict]:

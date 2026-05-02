@@ -3,17 +3,18 @@ from functools import partial
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import Command
 
 from src.agent.nodes import node_call_model, node_execute_tools, node_human_review, node_reflect
+from src.agent.parsers import build_initial_content  # no circular import — parsers has no graph/core deps
 from src.agent.state import AgentState
 from src.models.index import GlobalIndex
 from src.models.query import AgentQuery, AgentResponse
 
 logger = logging.getLogger(__name__)
 
-# In-memory checkpointer — persists state between graph runs (HITL resume)
-# Replace with SqliteSaver or PostgresSaver for multi-process production deployments
 _checkpointer = MemorySaver()
+_graph_cache: dict = {}
 
 
 # ── Edge conditions ──────────────────────────────────────────────
@@ -26,44 +27,55 @@ def _after_model(state: AgentState) -> str:
 
 
 def _after_reflect(state: AgentState) -> str:
-    """Route to HITL when reflection finds gaps, otherwise END."""
     if state.get("analysis") is None and state.get("reflection") is not None:
-        return "call_model"          # auto-retry (reflection injected gap messages)
+        return "call_model"          # auto-retry after reflection gaps
     reflection = state.get("reflection")
     if reflection and not reflection.approved:
-        return "human_review"        # pause and wait for developer decision
+        return "human_review"
     return END
 
 
 def _after_human_review(state: AgentState) -> str:
-    """Route based on what the developer decided."""
     decision = state.get("human_decision", "approve")
     if isinstance(decision, str) and decision.startswith("investigate:"):
-        # Developer wants more investigation — inject instruction and retry
-        instruction = decision.removeprefix("investigate:").strip()
-        logger.info("hitl_investigate instruction=%r", instruction[:80])
-        return "call_model"
-    # "approve" or anything else → accept analysis
+        return "prepare_investigation"   # ← new intermediate node
     return END
+
+
+# ── Nodes ────────────────────────────────────────────────────────
+
+def node_prepare_investigation(state: AgentState) -> dict:
+    """Inject the human's investigation instruction into messages before retrying."""
+    decision = state.get("human_decision", "")
+    instruction = decision.removeprefix("investigate:").strip()
+    logger.info("hitl_prepare_investigation instruction=%r", instruction[:80])
+    inject_msg = {
+        "role": "user",
+        "content": [{
+            "type": "text",
+            "text": (
+                "El desarrollador solicita investigar los siguientes puntos adicionales "
+                f"y regenerar el JSON completo:\n{instruction}"
+            ),
+        }],
+    }
+    return {"messages": state["messages"] + [inject_msg]}
 
 
 # ── Graph builder ────────────────────────────────────────────────
 
-_graph_cache: dict = {}  # client_id → compiled graph
-
-
 def build_graph(client):
-    """Build and compile the StateGraph with HITL support. Cached per client instance."""
     key = id(client)
     if key in _graph_cache:
         return _graph_cache[key]
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("call_model",    partial(node_call_model, client=client))
-    graph.add_node("execute_tools", node_execute_tools)
-    graph.add_node("reflect",       partial(node_reflect, client=client))
-    graph.add_node("human_review",  node_human_review)
+    graph.add_node("call_model",            partial(node_call_model, client=client))
+    graph.add_node("execute_tools",         node_execute_tools)
+    graph.add_node("reflect",               partial(node_reflect, client=client))
+    graph.add_node("human_review",          node_human_review)
+    graph.add_node("prepare_investigation", node_prepare_investigation)
 
     graph.set_entry_point("call_model")
 
@@ -78,19 +90,34 @@ def build_graph(client):
     )
     graph.add_conditional_edges(
         "human_review", _after_human_review,
-        {"call_model": "call_model", END: END},
+        {"prepare_investigation": "prepare_investigation", END: END},
     )
+    graph.add_edge("prepare_investigation", "call_model")
 
     compiled = graph.compile(checkpointer=_checkpointer)
     _graph_cache[key] = compiled
     return compiled
 
 
-# ── Public runners ───────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────
 
 def _make_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
+
+def _extract_result(final: dict | None) -> tuple:
+    """Pull analysis, reflection, repos, files from final state dict."""
+    if not isinstance(final, dict):
+        return None, None, [], []
+    return (
+        final.get("analysis"),
+        final.get("reflection"),
+        list(final.get("repos_used", [])),
+        final.get("files_used", []),
+    )
+
+
+# ── Public runners ───────────────────────────────────────────────
 
 async def run_graph(
     query: AgentQuery,
@@ -98,36 +125,24 @@ async def run_graph(
     client,
     thread_id: str = "default",
 ) -> "GraphRunResult":
-    """Start or continue a graph run. Returns a GraphRunResult."""
-    from src.agent.core import _build_initial_content
-
     graph = build_graph(client)
     config = _make_config(thread_id)
 
-    # Check if this thread already has state (resume after HITL)
-    snapshot = await graph.aget_state(config)
-    is_resume = bool(snapshot and snapshot.next)
+    initial_state: AgentState = {
+        "messages": [{"role": "user", "content": build_initial_content(query)}],
+        "query": query,
+        "index": index,
+        "repos_used": [],
+        "files_used": [],
+        "tool_round": 0,
+        "reflection_round": 0,
+        "_stop_reason": "",
+        "analysis": None,
+        "reflection": None,
+        "human_decision": None,
+    }
+    final = await graph.ainvoke(initial_state, config)
 
-    if is_resume:
-        # Resume: the last node was interrupted — no new initial state needed
-        final = await graph.ainvoke(None, config)
-    else:
-        initial_state: AgentState = {
-            "messages": [{"role": "user", "content": _build_initial_content(query)}],
-            "query": query,
-            "index": index,
-            "repos_used": [],
-            "files_used": [],
-            "tool_round": 0,
-            "reflection_round": 0,
-            "_stop_reason": "",
-            "analysis": None,
-            "reflection": None,
-            "human_decision": None,
-        }
-        final = await graph.ainvoke(initial_state, config)
-
-    # Check if interrupted (HITL pending)
     snapshot = await graph.aget_state(config)
     interrupted = bool(snapshot and snapshot.next)
     interrupt_payload = None
@@ -137,37 +152,24 @@ async def run_graph(
                 interrupt_payload = task.interrupts[0].value
                 break
 
-    analysis = final.get("analysis") if isinstance(final, dict) else None
-    reflection = final.get("reflection") if isinstance(final, dict) else None
-    repos = list(final.get("repos_used", [])) if isinstance(final, dict) else []
-    files = final.get("files_used", []) if isinstance(final, dict) else []
-
+    analysis, reflection, repos, files = _extract_result(final)
     return GraphRunResult(
         thread_id=thread_id,
         interrupted=interrupted,
         interrupt_payload=interrupt_payload,
-        response=AgentResponse(
-            answer=analysis.markdown if analysis else (
-                "Análisis en pausa — esperando revisión humana." if interrupted
-                else "El agente no generó un análisis válido."
-            ),
+        response=None if interrupted else AgentResponse(
+            answer=analysis.markdown if analysis else "El agente no generó un análisis válido.",
             analysis=analysis,
             repos_consulted=repos,
             files_fetched=files,
             reflection_approved=reflection.approved if reflection else None,
             reflection_verdict=reflection.verdict if reflection else None,
-        ) if not interrupted else None,
+        ),
     )
 
 
-async def resume_graph(
-    thread_id: str,
-    decision: str,
-    client,
-) -> "GraphRunResult":
-    """Resume an interrupted graph with the human's decision."""
-    from langgraph.types import Command
-
+async def resume_graph(thread_id: str, decision: str, client) -> "GraphRunResult":
+    """Resume an interrupted graph using Command(resume=...) — the documented LangGraph pattern."""
     graph = build_graph(client)
     config = _make_config(thread_id)
 
@@ -176,11 +178,7 @@ async def resume_graph(
     snapshot = await graph.aget_state(config)
     interrupted = bool(snapshot and snapshot.next)
 
-    analysis = final.get("analysis") if isinstance(final, dict) else None
-    reflection = final.get("reflection") if isinstance(final, dict) else None
-    repos = list(final.get("repos_used", [])) if isinstance(final, dict) else []
-    files = final.get("files_used", []) if isinstance(final, dict) else []
-
+    analysis, reflection, repos, files = _extract_result(final)
     return GraphRunResult(
         thread_id=thread_id,
         interrupted=interrupted,
