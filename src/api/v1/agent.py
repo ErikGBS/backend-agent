@@ -1,9 +1,9 @@
 import markdown as md
 from fastapi import APIRouter, Depends, HTTPException, Security
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 
-from src.agent.core import run_agent
+from src.agent.core import run_agent, run_agent_stream
 from src.core.config import settings
 from src.indexer.index_builder import load_index
 from src.models.query import AgentQuery, AgentResponse
@@ -63,6 +63,29 @@ async def query_agent(
     if not index:
         raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
     return await run_agent(body, index)
+
+
+@router.post("/stream")
+async def stream_agent(
+    body: AgentQuery,
+    _: str = Depends(_verify_api_key),
+) -> StreamingResponse:
+    """
+    Streaming endpoint via Server-Sent Events (SSE).
+    Emite eventos en tiempo real mientras el agente trabaja:
+      - {"event": "start"}           — inicio del análisis
+      - {"event": "progress", "tool": "...", "label": "...", "detail": "..."}  — tool en ejecución
+      - {"event": "token", "text": "..."}   — fragmentos del análisis final
+      - {"event": "done", "repos": [...], "files": [...]}  — análisis completo
+    """
+    index = load_index()
+    if not index:
+        raise HTTPException(status_code=503, detail="Índice no disponible. Ejecuta el indexador primero.")
+    return StreamingResponse(
+        run_agent_stream(body, index),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/report", response_class=HTMLResponse)

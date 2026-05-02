@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import AsyncGenerator
 
 import anthropic
 from langsmith import traceable
@@ -164,3 +165,115 @@ async def run_agent(query: AgentQuery, index: GlobalIndex) -> AgentResponse:
             repos_consulted=list(repos_used),
             files_fetched=files_used,
         )
+
+
+def _sse(event: str, **data) -> str:
+    return f"data: {json.dumps({'event': event, **data})}\n\n"
+
+
+_TOOL_LABELS = {
+    "search_code": "Buscando en el código",
+    "fetch_file": "Leyendo archivo",
+    "list_endpoints": "Listando endpoints",
+    "get_schema": "Obteniendo schema",
+}
+
+
+@traceable(name="backend-agent/stream", tags=["agent", "stream"])
+async def run_agent_stream(
+    query: AgentQuery, index: GlobalIndex
+) -> AsyncGenerator[str, None]:
+    """Same agent loop as run_agent but yields SSE events for real-time feedback."""
+    messages: list[dict] = [{"role": "user", "content": _build_initial_content(query)}]
+    repos_used: set[str] = set()
+    files_used: list[str] = []
+    tool_round = 0
+
+    yield _sse("start", message="Analizando historia de usuario...")
+
+    while True:
+        response = await _raw_client.messages.create(
+            model=settings.claude_model,
+            max_tokens=8192,
+            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            tools=TOOLS,
+            messages=messages,
+        )
+
+        if response.stop_reason == "end_turn":
+            raw = next((b.text for b in response.content if b.type == "text"), "")
+            analysis = _extract_analysis(raw)
+
+            # Stream the final markdown token by token
+            text = analysis.markdown if analysis else raw
+            chunk_size = 80
+            for i in range(0, len(text), chunk_size):
+                yield _sse("token", text=text[i : i + chunk_size])
+
+            yield _sse(
+                "done",
+                repos=list(repos_used),
+                files=files_used,
+                rounds=tool_round,
+                valid_json=analysis is not None,
+            )
+            return
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+
+                label = _TOOL_LABELS.get(block.name, block.name)
+                detail = next(iter(block.input.values()), "") if block.input else ""
+                yield _sse(
+                    "progress",
+                    round=tool_round + 1,
+                    tool=block.name,
+                    label=label,
+                    detail=str(detail)[:80],
+                )
+                logger.info("stream_tool round=%d tool=%s", tool_round + 1, block.name)
+
+                result = await execute_tool(block.name, block.input, index, query.project)
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+
+                if "repo" in block.input:
+                    repos_used.add(block.input["repo"])
+                if block.name == "fetch_file":
+                    files_used.append(f"{block.input.get('repo')}:{block.input.get('path')}")
+
+            tool_round += 1
+            if tool_round >= _MAX_TOOL_ROUNDS:
+                messages.append({"role": "user", "content": tool_results})
+                messages.append({"role": "user", "content": [{"type": "text", "text": _FORCE_OUTPUT_MSG}]})
+                yield _sse("progress", round=tool_round, tool="force_output", label="Generando análisis final", detail="")
+                final = await _raw_client.messages.create(
+                    model=settings.claude_model,
+                    max_tokens=8192,
+                    system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+                    messages=messages,
+                )
+                raw = next((b.text for b in final.content if hasattr(b, "text")), "")
+                analysis = _extract_analysis(raw)
+                text = analysis.markdown if analysis else raw
+                chunk_size = 80
+                for i in range(0, len(text), chunk_size):
+                    yield _sse("token", text=text[i : i + chunk_size])
+                yield _sse("done", repos=list(repos_used), files=files_used, rounds=tool_round, valid_json=analysis is not None)
+                return
+
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        # Unexpected stop
+        raw = next((b.text for b in response.content if hasattr(b, "text")), "")
+        analysis = _extract_analysis(raw)
+        text = analysis.markdown if analysis else raw
+        for i in range(0, len(text), 80):
+            yield _sse("token", text=text[i : i + 80])
+        yield _sse("done", repos=list(repos_used), files=files_used, rounds=tool_round, valid_json=False)
+        return
