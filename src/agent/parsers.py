@@ -3,16 +3,30 @@ import re
 
 from src.models.query import AgentQuery, RefinementAnalysis
 
-_JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+_FENCE_BLOCK = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+_OBJECT_SPAN = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def extract_analysis(raw: str) -> RefinementAnalysis | None:
-    text = _JSON_FENCE.sub("", raw).strip()
-    try:
-        data = json.loads(text)
-        return RefinementAnalysis.model_validate(data)
-    except (json.JSONDecodeError, ValueError):
-        return None
+    candidates: list[str] = []
+
+    fence_match = _FENCE_BLOCK.search(raw)
+    if fence_match:
+        candidates.append(fence_match.group(1))
+
+    candidates.append(raw.strip())
+
+    object_match = _OBJECT_SPAN.search(raw)
+    if object_match:
+        candidates.append(object_match.group(0))
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+            return RefinementAnalysis.model_validate(data)
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
 
 
 def build_initial_content(query: AgentQuery) -> list[dict]:

@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.agent.core import _build_initial_content, _extract_analysis, run_agent
+from src.agent.core import run_agent
+from src.agent.parsers import build_initial_content as _build_initial_content, extract_analysis as _extract_analysis
 from src.models.query import AgentQuery, RefinementAnalysis
 
 from tests.conftest import VALID_ANALYSIS_DICT
@@ -52,6 +53,22 @@ class TestExtractAnalysis:
 
     def test_empty_string_returns_none(self):
         assert _extract_analysis("") is None
+
+    def test_json_with_prose_before_fence(self):
+        raw = f"Tengo toda la información necesaria.\n\n```json\n{json.dumps(VALID_ANALYSIS_DICT)}\n```"
+        result = _extract_analysis(raw)
+        assert result is not None
+        assert result.title == VALID_ANALYSIS_DICT["title"]
+
+    def test_json_with_prose_after_fence(self):
+        raw = f"```json\n{json.dumps(VALID_ANALYSIS_DICT)}\n```\n\nEsto cierra mi análisis."
+        result = _extract_analysis(raw)
+        assert result is not None
+
+    def test_json_with_prose_no_fence(self):
+        raw = f"Aquí está el resultado:\n{json.dumps(VALID_ANALYSIS_DICT)}\nFin."
+        result = _extract_analysis(raw)
+        assert result is not None
 
 
 # --- _build_initial_content ---
